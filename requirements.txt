@@ -1,0 +1,6 @@
+fastapi[standard]
+groq 
+instructor 
+python-dotenv
+together
+sqlmodel
