@@ -10,8 +10,6 @@ import base64
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import select, Session
-
-
 from dotenv import load_dotenv
 
 from database import get_session, init_db
@@ -19,21 +17,25 @@ from models import Comic, ComicRequest, ComicResponse
 from lib.gen_image import generate_image_flux_async, generate_image_flux_free_async #, generate_and_upload_async
 from lib.gen_text import groq_text_generation
 
-
-
 # ✅ Load environment variables
 load_dotenv()
 
 # ✅ Initialize FastAPI App
 app = FastAPI()
 
-# ✅ Add CORS Middleware
+# ✅ Ensure ALL origins that need access are included
+origins = [
+    "http://localhost:3000",
+    "https://comic.thietkeai.com",
+    "https://comicai-backend.onrender.com"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://comic.thietkeai.com"],  # ✅ Allow requests from Next.js frontend
+    allow_origins=origins,  # ✅ Only allows these origins
     allow_credentials=True,
-    allow_methods=["*"],  # ✅ Allow all methods (GET, POST, etc.)
-    allow_headers=["*"],  # ✅ Allow all headers
+    allow_methods=["*"],  # ✅ Allows GET, POST, PUT, DELETE, OPTIONS
+    allow_headers=["*"],  # ✅ Allows all headers (including authorization)
 )
 
 # ✅ Dependency Injection for Database Session
