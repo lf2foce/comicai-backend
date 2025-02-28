@@ -4,3 +4,4 @@ instructor
 python-dotenv
 together
 sqlmodel
+psycopg2
