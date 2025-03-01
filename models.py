@@ -19,6 +19,7 @@ class ComicPage(BaseModel):
     text_full: str
 
 class ComicScript(BaseModel):
+    title: str
     summary: str
     pages: List[ComicPage]  # A list of pages
 
@@ -30,6 +31,8 @@ class ComicRequest(SQLModel):
 class ComicResponse(SQLModel):
     id: str
     prompt: str
+    title: str
+    summary: str
     pages: List[dict]  # Ensure pages are stored as a structured list
     created_at: str  # ISO format datetime
 
@@ -37,6 +40,7 @@ class ComicResponse(SQLModel):
 class Comic(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     prompt: str
+    title: str
     pages: list = Field(sa_column=Column(JSON))  # ✅ Store as JSON in PostgreSQL
     summary: str
     created_at: datetime = Field(default_factory=datetime.now)

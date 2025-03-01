@@ -60,10 +60,10 @@ The highest mountain in the world? Mount Everest.
 EXAMPLE JSON OUTPUT:
 {
 "summary": "[Short overview of the user's story idea]",
+"title": "[Scene Title]",
 "pages": [
     {
       "page": 1,
-      "title": "[Scene Title]",
       "scene": "[What happens in this scene? Include challenges, emotions, or key character moments.]",
       "text_full": "[Expanded, highly descriptive storytelling for this scene]",
       "image_prompt": "comic style, highly detailed scene, dynamic perspective [specific scene detail in english related to the scene]",

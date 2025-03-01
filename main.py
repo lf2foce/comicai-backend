@@ -62,8 +62,8 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     comic_id = str(uuid.uuid4())
 
     # comic_list = openai_text_generation(request)
-    # comic_list = groq_text_generation(request)
-    comic_list = deepseek_text_generation(request)
+    comic_list = groq_text_generation(request)
+    # comic_list = deepseek_text_generation(request)
 
     t1 = time.time()
     print(f"=========[TIME] Model generate text response time: {t1 - start_time:.2f} sec")
@@ -90,7 +90,8 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     t2 = time.time()
     print(f"=========[TIME] Model generate image time: {t2 - t1:.2f} sec")
     # Save comic in PostgreSQL
-    new_comic = Comic(id=comic_id, prompt=request.prompt, pages=comic_list['pages'], summary=comic_list["summary"])
+    new_comic = Comic(id=comic_id, prompt=request.prompt, 
+                      pages=comic_list['pages'], summary=comic_list["summary"], title=comic_list["title"])
     # print("=============== new comic:",new_comic) 
 
 
@@ -104,6 +105,8 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     return ComicResponse(
         id=new_comic.id,
         prompt=new_comic.prompt,
+        title=new_comic.title,
+        summary=new_comic.summary,
         pages=json.loads(new_comic.pages),  # Convert JSON string back to Python object
         created_at=new_comic.created_at.isoformat()
     )
@@ -120,6 +123,9 @@ def get_comic(comic_id: str, db: Session = Depends(get_db)):
     return ComicResponse(
         id=comic.id,
         prompt=comic.prompt,
+        
         pages=json.loads(comic.pages),  # Convert JSON string back to Python object
+        summary=comic.summary,
+        title=comic.title,
         created_at=comic.created_at.isoformat()
     )
