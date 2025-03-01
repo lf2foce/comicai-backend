@@ -15,8 +15,11 @@ class ComicPage(BaseModel):
     scene: str
     dialogue: List[DialogueEntry]  # List of dialogues
     image_url: str
+    image_prompt: str
+    text_full: str
 
 class ComicScript(BaseModel):
+    summary: str
     pages: List[ComicPage]  # A list of pages
 
 # ✅ Request Model for Generating a Comic
@@ -35,6 +38,7 @@ class Comic(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     prompt: str
     pages: list = Field(sa_column=Column(JSON))  # ✅ Store as JSON in PostgreSQL
+    summary: str
     created_at: datetime = Field(default_factory=datetime.now)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)  # ✅ Allow Pydantic to handle unknown types

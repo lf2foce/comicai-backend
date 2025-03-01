@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from database import get_session, init_db
 from models import Comic, ComicRequest, ComicResponse
 from lib.gen_image import generate_image_flux_async, generate_image_flux_free_async #, generate_and_upload_async
-from lib.gen_text import groq_text_generation
+from lib.gen_text import groq_text_generation, deepseek_text_generation
 
 # ✅ Load environment variables
 load_dotenv()
@@ -62,12 +62,13 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     comic_id = str(uuid.uuid4())
 
     # comic_list = openai_text_generation(request)
-    comic_list = groq_text_generation(request)
+    # comic_list = groq_text_generation(request)
+    comic_list = deepseek_text_generation(request)
 
     t1 = time.time()
     print(f"=========[TIME] Model generate text response time: {t1 - start_time:.2f} sec")
 
-    together_tasks = [generate_image_flux_free_async(page["scene"]) for page in comic_list]
+    together_tasks = [generate_image_flux_free_async(page["image_prompt"]) for page in comic_list['pages']]
     # ✅ Handle errors properly
     try:
         image_urls = await asyncio.gather(*together_tasks)
@@ -75,7 +76,7 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
         print(f"❌ Error gathering images: {e}")
         image_urls = [""] * len(comic_list)  # Return empty URLs if failure
 
-    for page, image_url in zip(comic_list, image_urls):
+    for page, image_url in zip(comic_list['pages'], image_urls):
         page["image_url"] = image_url
 
     # gemini
@@ -89,7 +90,7 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     t2 = time.time()
     print(f"=========[TIME] Model generate image time: {t2 - t1:.2f} sec")
     # Save comic in PostgreSQL
-    new_comic = Comic(id=comic_id, prompt=request.prompt, pages=comic_list)
+    new_comic = Comic(id=comic_id, prompt=request.prompt, pages=comic_list['pages'], summary=comic_list["summary"])
     # print("=============== new comic:",new_comic) 
 
 

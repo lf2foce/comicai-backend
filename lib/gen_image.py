@@ -39,7 +39,7 @@ async def generate_image_flux_async(prompt: str) -> str:
                 prompt=prompt,
                 # model="black-forest-labs/FLUX.1-schnell-Free",
                 model="black-forest-labs/FLUX.1-schnell",
-                steps=8,
+                steps=14,
                 n=1,
                 height=1024,
                 width=768,
@@ -61,9 +61,9 @@ async def generate_image_flux_free_async(prompt: str) -> str:
     """Asynchronously generate an image using the Together AI API."""
     try:
         response = await async_client.images.generate(
-            model="black-forest-labs/FLUX.1-schnell",
+            model="black-forest-labs/FLUX.1-schnell", # tạm đổi vì limit, k free
             prompt=prompt,
-            steps=8,
+            steps=12, # max 12
             n=1,
             height=1024,
             width=768,
