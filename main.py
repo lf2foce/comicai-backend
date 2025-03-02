@@ -15,7 +15,8 @@ from dotenv import load_dotenv
 from database import get_session, init_db
 from models import Comic, ComicRequest, ComicResponse
 from lib.gen_image import generate_image_flux_async, generate_image_flux_free_async #, generate_and_upload_async
-from lib.gen_text import groq_text_generation, deepseek_text_generation
+from lib.gen_text import groq_text_generation, deepseek_text_generation, openai_text_generation
+
 
 # ✅ Load environment variables
 load_dotenv()
@@ -59,8 +60,8 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     start_time = time.time()  # Start timing
     comic_id = str(uuid.uuid4())
 
-    # comic_list = openai_text_generation(request)
-    comic_list = groq_text_generation(request)
+    comic_list = openai_text_generation(request)
+    # comic_list = groq_text_generation(request)
     # comic_list = deepseek_text_generation(request)
 
     t1 = time.time()

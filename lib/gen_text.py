@@ -12,40 +12,36 @@ from models import ComicScript
 # Load environment variables
 load_dotenv()
 
-# openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 groq_client = instructor.from_groq(Groq(), mode=instructor.Mode.JSON)
 
-# def openai_text_generation(request):
-#     # Generate comic script using OpenAI
-#     try:
-#         completion = openai.beta.chat.completions.parse(
-#             model="gpt-4o-mini",
-#             messages=[
-#                 {"role": "system", "content": "You are a professional comic book creator. Generate a detailed 4 pages comic script based on the user's prompt. The response must be a JSON object following this structure:\n"
-#                                             "- 'pages': A list of pages.\n"
-#                                             "- Each page includes:\n"
-#                                             "  - 'scene': A vivid description of the visual setting.\n"
-#                                             "  - 'dialogue': A list of dictionaries where each dictionary contains 'character' and 'text' fields.\n"
-#                                             "Ensure a coherent storyline across pages. Content should be in the language of the story."},
-#                 {"role": "user", "content": request.prompt}, #"A cyberpunk detective is investigating a missing android in a neon-lit city."
-#             ],
-#             response_format=ComicScript,  # Structured Pydantic validation
-#         )
+def openai_text_generation(request):
+    # Generate comic script using OpenAI
+    try:
+        completion = openai.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt_v1},
+                {"role": "user", "content": request.prompt}, #"A cyberpunk detective is investigating a missing android in a neon-lit city."
+            ],
+            response_format=ComicScript,  # Structured Pydantic validation
+        )
 
-#         # Access the structured response
-#         comic_data = completion.choices[0].message.parsed
+        # Access the structured response
+        comic_data = completion.choices[0].message.parsed
 
-#         comic_list = comic_data.model_dump()['pages']
-#         # print("============= comic_data parsed", comic_data)
+        comic_list = comic_data.model_dump()#['pages']
+        # print("============= comic_data parsed", comic_data)
 
-#         return comic_list
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"OpenAI Error: {str(e)}")
+        return comic_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenAI Error: {str(e)}")
     
 
 
 system_prompt_v1 = """
-The user will provide some story idea. Please parse the "summary" and "pages" and output them in JSON format. 
+The user will provide some story idea. generate title based on the story idea that is more exciting and interesting for kids
+Please parse the "summary", "title", 'art_style' and "pages" and output them in JSON format. 
 
 Show only 4 pages of the generated comic script. Try to make the scenes as exciting as possible and keep the story finish or moving forward.
 
@@ -53,6 +49,7 @@ Show only 4 pages of the generated comic script. Try to make the scenes as excit
 1. Language Handling
 Detect the user's input language automatically.
 If the input is in Vietnamese, return content only in Vietnamese, but image_prompt must always be in English to ensure optimal AI-generated images.
+If the art Styles of the story is not provided, please use the default art style as "cartoon style". Other art styles could be surreal style, dreamy watercolor, storybook pastel, soft pencil sketch", cozy oil painting
 
 EXAMPLE INPUT: 
 The highest mountain in the world? Mount Everest.
@@ -65,8 +62,9 @@ EXAMPLE JSON OUTPUT:
     {
       "page": 1,
       "scene": "[What happens in this scene? Include challenges, emotions, or key character moments.]",
+      "art_style": "[art style based on the story]",
       "text_full": "[Expanded, highly descriptive storytelling for this scene]",
-      "image_prompt": "comic style, highly detailed scene, dynamic perspective [specific scene detail in english related to the scene]",
+      "image_prompt": "[art style based on the story]  dynamic perspective [character predefine appreance if exist] [specific scene detail in english related to the scene]",
       "dialogue": [
         {
           "character": "[Character Name]",
