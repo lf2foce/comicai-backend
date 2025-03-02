@@ -24,18 +24,13 @@ load_dotenv()
 app = FastAPI()
 
 # ✅ Ensure ALL origins that need access are included
-origins = [
-    "http://localhost:3000",
-    "https://comic.thietkeai.com",
-    "https://comicai-backend.onrender.com"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # ✅ Only allows these origins
+    allow_origins=["https://comic.thietkeai.com", "http://localhost:3000"], # Only allow these origins
+    allow_origin_regex="https://.*",  # Ensures subdomains work
     allow_credentials=True,
-    allow_methods=["*"],  # ✅ Allows GET, POST, PUT, DELETE, OPTIONS
-    allow_headers=["*"],  # ✅ Allows all headers (including authorization)
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ✅ Dependency Injection for Database Session
@@ -43,8 +38,11 @@ def get_db():
     session = next(get_session())
     try:
         yield session
+    except Exception as e:
+        print(f"❌ Database Connection Error: {e}")
     finally:
         session.close()
+
 
 @app.on_event("startup")
 def on_startup():
