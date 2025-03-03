@@ -6,11 +6,25 @@ import json
 import instructor
 from dotenv import load_dotenv
 from groq import Groq
+from google import genai
+from google.genai import types
+import google.auth.credentials
+import vertexai
 # from ..models import Comic, ComicRequest, ComicResponse
 from models import ComicScript
-from lib.story import system_prompt_v1, system_prompt_v2, system_prompt_v3, system_prompt_v4
+from lib.story import system_prompt_v1, system_prompt_v2, system_prompt_v3, system_prompt_v4, system_prompt_v5
 # Load environment variables
 load_dotenv()
+
+def init_vertexai():
+    credentials_json = json.loads(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+    credentials = google.auth.credentials.Credentials.from_service_account_info(credentials_json)
+
+    vertexai.init(
+        project=os.environ.get("PROJECT_ID"),
+        location=os.environ.get("LOCATION"),
+        credentials=credentials
+    )
 
 openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 groq_client = instructor.from_groq(Groq(), mode=instructor.Mode.JSON)
@@ -87,3 +101,33 @@ def deepseek_text_generation(request):
         return comic_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Deepseek Error: {str(e)}")
+
+def gemini_text_generation(request):
+    try:
+        init_vertexai()
+        client = genai.Client(
+            vertexai=True,
+            project="thematic-land-451915-j3",
+            location="us-central1",
+        )
+        # Generate response using Gemini API
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=request.prompt,
+            config={
+                'response_mime_type': 'application/json',
+                'response_schema': ComicScript,  # Use ComicScript as the expected schema
+                'system_instruction': types.Part.from_text(
+                    text=system_prompt_v5
+                ),
+            },
+        )
+        # Extract structured response
+    
+        print('======text here', response.text)
+        comic_data=json.loads(response.text)
+        
+        
+        return comic_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini API Error: {str(e)}")

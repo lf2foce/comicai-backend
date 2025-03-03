@@ -6,3 +6,6 @@ together
 sqlmodel
 psycopg2
 openai
+google-genai
+google-cloud-aiplatform
+google-cloud-storage

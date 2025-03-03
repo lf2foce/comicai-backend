@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, Field, Column, JSON
 from datetime import datetime
 from uuid import uuid4
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 from pydantic import BaseModel, ConfigDict
 
 
@@ -19,7 +19,12 @@ class ComicPage(BaseModel):
     art_style: str
     final_transition: str # Optional[str]=None
 
+# class Character(BaseModel):
+#     description: str
+#     personality: str
+
 class Character(BaseModel):
+    name: str
     description: str
     personality: str
 
@@ -27,7 +32,9 @@ class ComicScript(BaseModel):
     title: str
     summary: str
     pages: List[ComicPage]  # A list of pages
-    characters: Optional[Dict[str, Character]] = None
+    characters: List[Character]
+    # characters: Optional[Dict[str, Character]] = None
+    
 # ✅ Request Model for Generating a Comic
 class ComicRequest(SQLModel):
     prompt: str

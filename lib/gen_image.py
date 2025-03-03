@@ -5,9 +5,9 @@ import os
 import asyncio
 from together import AsyncTogether
 
-# from google import genai
-# from google.genai import types
-# from google.cloud import storage 
+from google import genai
+from google.genai import types
+from google.cloud import storage 
 from io import BytesIO
 import base64
 import concurrent.futures
@@ -20,12 +20,6 @@ async_client = AsyncTogether(api_key=os.environ.get("TOGETHER_API_KEY"))
 
 # client_gemini = genai.Client(api_key=os.environ['GEMINI_API_KEY'])
 
-# client_gemini = genai.Client(
-#     vertexai=True,
-#     project="thematic-land-451915-j3",
-#     # location="us-central1",
-#     location="asia-southeast1",
-# )
 
 
 async def generate_image_flux_async(prompt: str) -> str:
@@ -150,80 +144,100 @@ async def generate_image_flux_free_async(prompt: str) -> str:
 #         traceback.print_exc()
 #         return None
 
+import json
+import google.auth.credentials
+import vertexai
+def init_vertexai():
+    credentials_json = json.loads(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
+    credentials = google.auth.credentials.Credentials.from_service_account_info(credentials_json)
+
+    vertexai.init(
+        project=os.environ.get("PROJECT_ID"),
+        location=os.environ.get("LOCATION"),
+        credentials=credentials
+    )
+# print(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
 
 
+semaphore = asyncio.Semaphore(1)  # ✅ Only 2 image generations at a time
 
-# semaphore = asyncio.Semaphore(2)  # ✅ Only 2 image generations at a time
+async def generate_image_gemini_async(prompt):
+    """Generate an image using the Gemini AI API asynchronously and return raw image bytes."""
+    async with semaphore:  # ⏳ Limit to 2 concurrent requests
+        try:
+            await asyncio.sleep(1)  # ⏳ Add 1s delay before processing each request
 
-# async def generate_image_gemini_async(prompt):
-#     """Generate an image using the Gemini AI API asynchronously and return raw image bytes."""
-#     async with semaphore:  # ⏳ Limit to 2 concurrent requests
-#         try:
-#             await asyncio.sleep(1)  # ⏳ Add 1s delay before processing each request
+            client_gemini = genai.Client(
+                vertexai=True,
+                project="thematic-land-451915-j3",
+                # location="us-central1",
+                location="asia-southeast1",
+            )
 
-#             response = await asyncio.to_thread(
-#                 lambda: client_gemini.models.generate_images(
-#                     model='imagen-3.0-generate-002',
-#                     prompt=prompt,
-#                     config=types.GenerateImagesConfig(
-#                         number_of_images=1,
-#                         aspect_ratio="3:4",
-#                     )
-#                 )
-#             )
 
-#             generated_image = response.generated_images[0]
-#             return generated_image.image.image_bytes  # ✅ Return raw image bytes
-#         except Exception as e:
-#             import traceback
-#             print(f"Error in generate_image_gemini_async: {e}")
-#             traceback.print_exc()
-#             return None
+            response = await asyncio.to_thread(
+                lambda: client_gemini.models.generate_images(
+                    model='imagen-3.0-generate-002',
+                    prompt=prompt,
+                    config=types.GenerateImagesConfig(
+                        number_of_images=1,
+                        aspect_ratio="3:4",
+                    )
+                )
+            )
+
+            generated_image = response.generated_images[0]
+            return generated_image.image.image_bytes  # ✅ Return raw image bytes
+        except Exception as e:
+            import traceback
+            print(f"Error in generate_image_gemini_async: {e}")
+            traceback.print_exc()
+            return None
 
     
-# async def create_google_cloud_storage_url_async(image_bytes, filename, bucket_name="bucket_comic"):
-#     """Uploads raw image bytes to Google Cloud Storage asynchronously and returns a public URL."""
-#     loop = asyncio.get_running_loop()
-#     try:
-#         client = storage.Client()
-#         bucket = client.bucket(bucket_name)
-#         blob_name = f"testai/{filename}"
-#         blob = bucket.blob(blob_name)
+async def create_google_cloud_storage_url_async(image_bytes, filename, bucket_name="bucket_comic"):
+    """Uploads raw image bytes to Google Cloud Storage asynchronously and returns a public URL."""
+    loop = asyncio.get_running_loop()
+    try:
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob_name = f"testai/{filename}"
+        blob = bucket.blob(blob_name)
 
-#         # ✅ Upload raw bytes directly instead of base64
-#         await loop.run_in_executor(None, lambda: blob.upload_from_file(BytesIO(image_bytes), content_type="image/png"))
+        # ✅ Upload raw bytes directly instead of base64
+        await loop.run_in_executor(None, lambda: blob.upload_from_file(BytesIO(image_bytes), content_type="image/png"))
 
-#         return blob.public_url  # ✅ Return public URL directly
-#     except Exception as e:
-#         import traceback
-#         print(f"Error in create_google_cloud_storage_url_async: {e}")
-#         traceback.print_exc()
-#         return None
+        return blob.public_url  # ✅ Return public URL directly
+    except Exception as e:
+        import traceback
+        print(f"Error in create_google_cloud_storage_url_async: {e}")
+        traceback.print_exc()
+        return None
 
-# async def generate_and_upload_async(prompt, prefix="gemini_image_", bucket_name="bucket_comic"):
-#     """Generates an image and uploads it asynchronously, returning the public URL."""
-#     try:
-#         image_bytes = await generate_image_gemini_async(prompt)  # ✅ Limited to 2 at a time
-#         if image_bytes is None:
-#             print(f"generate_image_gemini_async returned None for prompt: {prompt}")
-#             return None
+async def generate_and_upload_async(prompt, prefix="gemini_image_", bucket_name="bucket_comic"):
+    """Generates an image and uploads it asynchronously, returning the public URL."""
+    try:
+        image_bytes = await generate_image_gemini_async(prompt)  # ✅ Limited to 2 at a time
+        if image_bytes is None:
+            print(f"generate_image_gemini_async returned None for prompt: {prompt}")
+            return None
 
-#         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-#         unique_id = uuid.uuid4().hex[:8]
-#         filename = f"{prefix}{timestamp}_{unique_id}.png"
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = uuid.uuid4().hex[:8]
+        filename = f"{prefix}{timestamp}_{unique_id}.png"
 
-#         # ✅ Upload raw image bytes directly
-#         url = await create_google_cloud_storage_url_async(image_bytes, filename, bucket_name)
-#         if url is None:
-#             print(f"create_google_cloud_storage_url_async returned None for filename: {filename}")
-#             return None
+        # ✅ Upload raw image bytes directly
+        url = await create_google_cloud_storage_url_async(image_bytes, filename, bucket_name)
+        if url is None:
+            print(f"create_google_cloud_storage_url_async returned None for filename: {filename}")
+            return None
 
-#         return url
-#     except Exception as e:
-#         import traceback
-#         print(f"Error in generate_and_upload_async: {e}")
-#         traceback.print_exc()
-#         return None
+        return url
+    except Exception as e:
+        import traceback
+        print(f"Error in generate_and_upload_async: {e}")
+        traceback.print_exc()
+        return None
 # end of comment worked above
     
 # async def generate_and_upload_async(prompt, prefix="gemini_image_", bucket_name="bucket_comic"):
