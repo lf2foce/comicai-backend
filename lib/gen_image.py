@@ -12,6 +12,7 @@ from io import BytesIO
 import base64
 import concurrent.futures
 import time
+from .init_gemini import init_vertexai
 # executor = ThreadPoolExecutor()
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)  # ✅ Prevent overloading the API
 
@@ -19,7 +20,7 @@ client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 async_client = AsyncTogether(api_key=os.environ.get("TOGETHER_API_KEY"))
 
 # client_gemini = genai.Client(api_key=os.environ['GEMINI_API_KEY'])
-
+init_vertexai()
 
 
 async def generate_image_flux_async(prompt: str) -> str:
@@ -144,19 +145,6 @@ async def generate_image_flux_free_async(prompt: str) -> str:
 #         traceback.print_exc()
 #         return None
 
-import json
-import google.auth.credentials
-import vertexai
-def init_vertexai():
-    credentials_json = json.loads(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
-    credentials = google.auth.credentials.Credentials.from_service_account_info(credentials_json)
-
-    vertexai.init(
-        project=os.environ.get("PROJECT_ID"),
-        location=os.environ.get("LOCATION"),
-        credentials=credentials
-    )
-# print(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
 
 
 semaphore = asyncio.Semaphore(1)  # ✅ Only 2 image generations at a time

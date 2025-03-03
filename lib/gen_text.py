@@ -8,23 +8,15 @@ from dotenv import load_dotenv
 from groq import Groq
 from google import genai
 from google.genai import types
-import google.auth.credentials
-import vertexai
+from google.oauth2 import service_account
+from .init_gemini import init_vertexai
 # from ..models import Comic, ComicRequest, ComicResponse
 from models import ComicScript
 from lib.story import system_prompt_v1, system_prompt_v2, system_prompt_v3, system_prompt_v4, system_prompt_v5
 # Load environment variables
 load_dotenv()
 
-def init_vertexai():
-    credentials_json = json.loads(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"))
-    credentials = google.auth.credentials.Credentials.from_service_account_info(credentials_json)
-
-    vertexai.init(
-        project=os.environ.get("PROJECT_ID"),
-        location=os.environ.get("LOCATION"),
-        credentials=credentials
-    )
+init_vertexai()
 
 openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 groq_client = instructor.from_groq(Groq(), mode=instructor.Mode.JSON)
@@ -107,8 +99,8 @@ def gemini_text_generation(request):
         init_vertexai()
         client = genai.Client(
             vertexai=True,
-            project="thematic-land-451915-j3",
-            location="us-central1",
+            project=os.environ.get("PROJECT_ID"),
+            location=os.environ.get("LOCATION", "us-central1"),
         )
         # Generate response using Gemini API
         response = client.models.generate_content(
