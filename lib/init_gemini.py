@@ -22,15 +22,15 @@ def init_vertexai():
             print(f"Failed to parse credentials JSON: {e}")
             raise ValueError(f"Invalid JSON in GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
         
-        # # Write the credentials to a temporary file instead of parsing directly
-        # # This avoids issues with the private key format
-        # with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
-        #     json.dump(credentials_json, temp_file)
-        #     temp_credentials_path = temp_file.name
-        #     print(f"Wrote credentials to temporary file: {temp_credentials_path}")
+        # Write the credentials to a temporary file instead of parsing directly
+        # This avoids issues with the private key format
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
+            json.dump(credentials_json, temp_file)
+            temp_credentials_path = temp_file.name
+            print(f"Wrote credentials to temporary file: {temp_credentials_path}")
         
-        # # Use the file path for authentication
-        # os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_credentials_path
+        # Use the file path for authentication
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_credentials_path
         
         # Initialize Vertex AI
         project_id = os.environ.get("PROJECT_ID")
