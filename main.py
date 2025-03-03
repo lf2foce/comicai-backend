@@ -72,24 +72,24 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     t1 = time.time()
     print(f"=========[TIME] Model generate text response time: {t1 - start_time:.2f} sec")
 
-    together_tasks = [generate_image_flux_free_async(page["image_prompt"]) for page in comic_list['pages']]
-    # ✅ Handle errors properly
-    try:
-        image_urls = await asyncio.gather(*together_tasks)
-    except Exception as e:
-        print(f"❌ Error gathering images: {e}")
-        image_urls = [""] * len(comic_list)  # Return empty URLs if failure
+    # together_tasks = [generate_image_flux_free_async(page["image_prompt"]) for page in comic_list['pages']]
+    # # ✅ Handle errors properly
+    # try:
+    #     image_urls = await asyncio.gather(*together_tasks)
+    # except Exception as e:
+    #     print(f"❌ Error gathering images: {e}")
+    #     image_urls = [""] * len(comic_list)  # Return empty URLs if failure
 
-    for page, image_url in zip(comic_list['pages'], image_urls):
-        page["image_url"] = image_url
+    # for page, image_url in zip(comic_list['pages'], image_urls):
+    #     page["image_url"] = image_url
 
     # gemini
-    # bucket_name = "bucket_comic" #replace with your bucket name.
-    # prefix = "gemini_image_" # desired prefix.
-    # image_urls = await asyncio.gather(*(generate_and_upload_async(page["image_prompt"], prefix, bucket_name) for page in comic_list['pages']))
+    bucket_name = "bucket_comic" #replace with your bucket name.
+    prefix = "gemini_image_" # desired prefix.
+    image_urls = await asyncio.gather(*(generate_and_upload_async(page["image_prompt"], prefix, bucket_name) for page in comic_list['pages']))
 
-    # for scene, url in zip(comic_list['pages'], image_urls):
-    #     scene["image_url"] = url
+    for scene, url in zip(comic_list['pages'], image_urls):
+        scene["image_url"] = url
 
     t2 = time.time()
     print(f"=========[TIME] Model generate image time: {t2 - t1:.2f} sec")

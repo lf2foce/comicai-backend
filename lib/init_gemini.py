@@ -1,7 +1,7 @@
 import os
 import json
 import tempfile
-from google.oauth2 import service_account
+# from google.oauth2 import service_account
 import vertexai
 
 def init_vertexai():
