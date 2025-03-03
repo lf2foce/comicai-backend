@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from groq import Groq
 # from ..models import Comic, ComicRequest, ComicResponse
 from models import ComicScript
-
+from lib.story import system_prompt_v1, system_prompt_v2, system_prompt_v3, system_prompt_v4
 # Load environment variables
 load_dotenv()
 
@@ -19,9 +19,9 @@ def openai_text_generation(request):
     # Generate comic script using OpenAI
     try:
         completion = openai.beta.chat.completions.parse(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
-                {"role": "system", "content": system_prompt_v1},
+                {"role": "system", "content": system_prompt_v4},
                 {"role": "user", "content": request.prompt}, #"A cyberpunk detective is investigating a missing android in a neon-lit city."
             ],
             response_format=ComicScript,  # Structured Pydantic validation
@@ -29,53 +29,15 @@ def openai_text_generation(request):
 
         # Access the structured response
         comic_data = completion.choices[0].message.parsed
-
         comic_list = comic_data.model_dump()#['pages']
         # print("============= comic_data parsed", comic_data)
-
+        print(json.dumps(comic_list, indent=2, ensure_ascii=False)) #
         return comic_list
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI Error: {str(e)}")
     
 
 
-system_prompt_v1 = """
-The user will provide some story idea. generate title based on the story idea that is more exciting and interesting for kids
-Please parse the "summary", "title", 'art_style' and "pages" and output them in JSON format. 
-
-Show only 4 pages of the generated comic script. Try to make the scenes as exciting as possible and keep the story finish or moving forward.
-
-📌 Core Features & Rules
-1. Language Handling
-Detect the user's input language automatically.
-If the input is in Vietnamese, return content only in Vietnamese, but image_prompt must always be in English to ensure optimal AI-generated images.
-If the art Styles of the story is not provided, please use the default art style as "cartoon style". Other art styles could be surreal style, dreamy watercolor, storybook pastel, soft pencil sketch", cozy oil painting
-
-EXAMPLE INPUT: 
-The highest mountain in the world? Mount Everest.
-
-EXAMPLE JSON OUTPUT:
-{
-"summary": "[Short overview of the user's story idea]",
-"title": "[Scene Title]",
-"pages": [
-    {
-      "page": 1,
-      "scene": "[What happens in this scene? Include challenges, emotions, or key character moments.]",
-      "art_style": "[art style based on the story]",
-      "text_full": "[Expanded, highly descriptive storytelling for this scene]",
-      "image_prompt": "[art style based on the story]  dynamic perspective [character predefine appreance if exist] [specific scene detail in english related to the scene]",
-      "dialogue": [
-        {
-          "character": "[Character Name]",
-          "text": "[Expressive and personality-driven dialogue]"
-        }
-      ],
-      "final_transition": "[Sentence leading to the next scene, keeping story momentum]"
-    }
-  ]
-}
-"""
 
 def groq_text_generation(request):
     try:
@@ -85,7 +47,7 @@ def groq_text_generation(request):
             # model="llama-3.1-8b-instant",
             response_model=ComicScript,
             messages=[
-                {"role": "system", "content": system_prompt_v1},
+                {"role": "system", "content": system_prompt_v4},
                 {"role": "user", "content": request.prompt},
             ],
             temperature=0.65,
@@ -93,7 +55,8 @@ def groq_text_generation(request):
 
         # Extract structured response
         comic_data = response.model_dump()
-        print("============= comic_data parsed", comic_data)
+        print(json.dumps(comic_data, indent=2, ensure_ascii=False)) #
+        # print("============= comic_data parsed", comic_data)
         return comic_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Groq Error: {str(e)}")
@@ -108,7 +71,7 @@ def deepseek_text_generation(request):
             base_url="https://api.deepseek.com",
         )
 
-        messages = [{"role": "system", "content": system_prompt_v1},
+        messages = [{"role": "system", "content": system_prompt_v4},
                     {"role": "user", "content": request.prompt}]
 
         response = client.chat.completions.create(

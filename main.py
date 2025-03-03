@@ -39,11 +39,8 @@ def get_db():
     session = next(get_session())
     try:
         yield session
-    except Exception as e:
-        print(f"❌ Database Connection Error: {e}")
     finally:
         session.close()
-
 
 @app.on_event("startup")
 def on_startup():
@@ -60,9 +57,16 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
     start_time = time.time()  # Start timing
     comic_id = str(uuid.uuid4())
 
-    comic_list = openai_text_generation(request)
-    # comic_list = groq_text_generation(request)
-    # comic_list = deepseek_text_generation(request)
+    try:
+        # comic_list = openai_text_generation(request)
+        # comic_list = groq_text_generation(request)
+        comic_list = deepseek_text_generation(request)
+        print("✅ Successfully generated comic text")
+    except Exception as e:
+        print(f"❌ Error in text generation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Text generation error: {str(e)}")
+    
+    
 
     t1 = time.time()
     print(f"=========[TIME] Model generate text response time: {t1 - start_time:.2f} sec")

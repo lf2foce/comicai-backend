@@ -62,6 +62,7 @@ async def generate_image_flux_free_async(prompt: str) -> str:
     try:
         response = await async_client.images.generate(
             model="black-forest-labs/FLUX.1-schnell", # tạm đổi vì limit, k free
+            # model="black-forest-labs/FLUX.1-dev",
             prompt=prompt,
             steps=12, # max 12
             n=1,

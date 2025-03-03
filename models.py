@@ -1,9 +1,8 @@
-from sqlmodel import SQLModel, Field,Column, JSON
+from sqlmodel import SQLModel, Field, Column, JSON
 from datetime import datetime
 from uuid import uuid4
-from typing import List
-from pydantic import ConfigDict
-from pydantic import BaseModel
+from typing import List, Optional, Dict
+from pydantic import BaseModel, ConfigDict
 
 
 # Define the expected schema
@@ -17,12 +16,18 @@ class ComicPage(BaseModel):
     image_url: str
     image_prompt: str
     text_full: str
+    art_style: str
+    final_transition: str # Optional[str]=None
+
+class Character(BaseModel):
+    description: str
+    personality: str
 
 class ComicScript(BaseModel):
     title: str
     summary: str
     pages: List[ComicPage]  # A list of pages
-
+    characters: Optional[Dict[str, Character]] = None
 # ✅ Request Model for Generating a Comic
 class ComicRequest(SQLModel):
     prompt: str
@@ -41,7 +46,7 @@ class Comic(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     prompt: str
     title: str
-    pages: list = Field(sa_column=Column(JSON))  # ✅ Store as JSON in PostgreSQL
+    pages: List[dict] = Field(sa_column=Column(JSON))  # ✅ Store as JSON in PostgreSQL
     summary: str
     created_at: datetime = Field(default_factory=datetime.now)
 
