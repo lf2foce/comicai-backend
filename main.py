@@ -117,7 +117,8 @@ async def generate_comic(request: ComicRequest, db: Session = Depends(get_db)):
         prompt=new_comic.prompt,
         title=new_comic.title,
         summary=new_comic.summary,
-        pages=json.loads(new_comic.pages),  # Convert JSON string back to Python object
+        # pages=json.loads(new_comic.pages),  # Convert JSON string back to Python object
+        pages=new_comic.pages,
         created_at=new_comic.created_at.isoformat()
     )
 
@@ -134,7 +135,8 @@ def get_comic(comic_id: str, db: Session = Depends(get_db)):
         id=comic.id,
         prompt=comic.prompt,
         
-        pages=json.loads(comic.pages),  # Convert JSON string back to Python object
+        # pages=json.loads(comic.pages),  # Convert JSON string back to Python object
+        pages=comic.pages,
         summary=comic.summary,
         title=comic.title,
         created_at=comic.created_at.isoformat()

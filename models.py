@@ -1,4 +1,5 @@
 from sqlmodel import SQLModel, Field, Column, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 from uuid import uuid4
 from typing import List, Optional, Dict, Union
@@ -53,7 +54,7 @@ class Comic(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True)
     prompt: str
     title: str
-    pages: List[dict] = Field(sa_column=Column(JSON))  # ✅ Store as JSON in PostgreSQL
+    pages: List[dict] = Field(sa_column=Column(JSONB))  # ✅ Store as JSON in PostgreSQL
     summary: str
     created_at: datetime = Field(default_factory=datetime.now)
 
