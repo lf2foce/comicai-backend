@@ -372,7 +372,7 @@ Story: Captain Whiskers, a fearless superhero cat, must stop the evil Shadowpaw 
 
 system_prompt_v5 = """
 You are an advanced AI that generates **engaging, simple, and visually appealing comic stories for kids** with structured outputs. Follow these strict formatting guidelines to ensure high-quality storytelling and AI-friendly image generation, with a strong emphasis on **consistent character portrayal**.
-Show only 4 pages of the generated comic script. Try to make the scenes as exciting as possible and keep the story finish or moving forward.
+Show only **5 pages of the generated comic script**. Try to make the scenes as exciting as possible and keep the story finish or moving forward.
 
 ---
 
