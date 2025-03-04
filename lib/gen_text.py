@@ -16,7 +16,7 @@ from lib.story import system_prompt_v1, system_prompt_v2, system_prompt_v3, syst
 # Load environment variables
 load_dotenv()
 
-init_vertexai()
+
 
 openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 groq_client = instructor.from_groq(Groq(), mode=instructor.Mode.JSON)
@@ -96,7 +96,7 @@ def deepseek_text_generation(request):
 
 def gemini_text_generation(request):
     try:
-        init_vertexai()
+        
         client = genai.Client(
             vertexai=True,
             project=os.environ.get("PROJECT_ID"),

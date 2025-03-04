@@ -12,7 +12,6 @@ from io import BytesIO
 import base64
 import concurrent.futures
 import time
-from .init_gemini import init_vertexai
 # executor = ThreadPoolExecutor()
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)  # ✅ Prevent overloading the API
 
@@ -20,7 +19,7 @@ client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 async_client = AsyncTogether(api_key=os.environ.get("TOGETHER_API_KEY"))
 
 # client_gemini = genai.Client(api_key=os.environ['GEMINI_API_KEY'])
-init_vertexai()
+
 
 
 async def generate_image_flux_async(prompt: str) -> str:
@@ -158,8 +157,8 @@ async def generate_image_gemini_async(prompt):
             client_gemini = genai.Client(
                 vertexai=True,
                 project="thematic-land-451915-j3",
-                # location="us-central1",
-                location="asia-southeast1",
+                location="us-central1",
+                # location="asia-southeast1",
             )
 
 
