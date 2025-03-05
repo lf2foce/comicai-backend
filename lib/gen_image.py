@@ -60,7 +60,7 @@ async def generate_image_flux_free_async(prompt: str) -> str:
             prompt=prompt,
             steps=12, # max 12
             n=1,
-            height=1024,
+            height=768,
             width=768,
         )
 
@@ -83,7 +83,7 @@ async def generate_image_flux_free_async(prompt: str) -> str:
 #             prompt=prompt,
 #             config=types.GenerateImagesConfig(
 #                 number_of_images=1,
-#                 aspect_ratio="3:4",
+#                 aspect_ratio="1:1",
 #             )
 #         ))
 
@@ -152,13 +152,13 @@ async def generate_image_gemini_async(prompt):
     """Generate an image using the Gemini AI API asynchronously and return raw image bytes."""
     async with semaphore:  # ⏳ Limit to 2 concurrent requests
         try:
-            await asyncio.sleep(1)  # ⏳ Add 1s delay before processing each request
+            await asyncio.sleep(2)  # ⏳ Add 1s delay before processing each request
 
             client_gemini = genai.Client(
                 vertexai=True,
                 project="thematic-land-451915-j3",
-                location="us-central1",
-                # location="asia-southeast1",
+                # location="us-central1",
+                location="asia-southeast1",
             )
 
 
@@ -168,7 +168,7 @@ async def generate_image_gemini_async(prompt):
                     prompt=prompt,
                     config=types.GenerateImagesConfig(
                         number_of_images=1,
-                        aspect_ratio="3:4",
+                        aspect_ratio="1:1",
                     )
                 )
             )
