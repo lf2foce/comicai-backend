@@ -123,3 +123,60 @@ def gemini_text_generation(request):
         return comic_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini API Error: {str(e)}")
+
+def gemini_text_generation_new(prompt):
+    try:
+        
+        client = genai.Client(
+            vertexai=True,
+            project=os.environ.get("PROJECT_ID"),
+            location=os.environ.get("LOCATION", "us-central1"),
+        )
+        # Generate response using Gemini API
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt,
+            config={
+                'response_mime_type': 'application/json',
+                'response_schema': ComicScript,  # Use ComicScript as the expected schema
+                'system_instruction': types.Part.from_text(
+                    text=system_prompt_v5
+                ),
+            },
+        )
+        # Extract structured response
+    
+        print('======text here', response.text)
+        comic_data=json.loads(response.text)
+        
+        
+        return comic_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini API Error: {str(e)}")
+    
+def generate_new_comic_pages(previous_pages, num_pages=3):
+    """Generate multiple new comic pages using AI with full context."""
+    
+    # Convert previous pages into structured context for AI
+    previous_story = "\n\n".join(
+        [f"Scene {i+1}: {page['text_full']}\nText and {page['final_transition']}\n" for i, page in enumerate(previous_pages)]
+    )
+
+    prompt = f"""
+    Continue this comic story (in the previous language used). Here is the previous storyline:
+
+    {previous_story}
+
+    Generate the next {num_pages} scenes with:
+    - A scene description
+    - Full text narration
+    - Image prompt (cartoon style) keep the same character as the previous scene
+
+    Format the response as a structured JSON list.
+    """
+
+    print('==========starting new comic generation \n')
+    # Convert AI response to structured JSON
+    new_scenes = gemini_text_generation_new(prompt)['pages']
+ 
+    return new_scenes

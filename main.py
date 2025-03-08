@@ -16,7 +16,7 @@ from models import Comic, ComicRequest, ComicResponse
 from lib.gen_image import (generate_image_flux_async, generate_image_flux_free_async,
                           generate_and_upload_async, generate_image_gemini,
                           upload_image_gg_storage_async)
-from lib.gen_text import groq_text_generation, deepseek_text_generation, openai_text_generation, gemini_text_generation
+from lib.gen_text import groq_text_generation, deepseek_text_generation, openai_text_generation, gemini_text_generation, generate_new_comic_pages
 from lib.init_gemini import init_vertexai
 
 # Load environment variables
@@ -89,6 +89,28 @@ async def generate_comic_images(comic_list):
     
     return comic_list
 
+async def generate_comic_images_flux(comic_list):
+    """Generate and upload images asynchronously using Together AI."""
+    
+    logging.info(f"🚀 Starting image generation for {len(comic_list['pages'])} pages.")
+
+    # Generate all images asynchronously
+    try:
+        image_urls = await asyncio.gather(
+            *[generate_image_flux_free_async(page["image_prompt"]) for page in comic_list["pages"]]
+        )
+    except Exception as e:
+        logging.error(f"❌ Error generating images: {e}")
+        image_urls = [""] * len(comic_list["pages"])  # Fallback to empty URLs
+
+    # Assign generated URLs back to comic pages
+    for i, page in enumerate(comic_list["pages"]):
+        page["image_url"] = image_urls[i] if image_urls[i] else "/placeholder.png"  # Default if empty
+        logging.info(f"✅ Image {i} URL: {page['image_url']}")
+
+    return comic_list
+
+
 async def process_comic_generation(request: ComicRequest, db: Session, comic_id: str):
     """Process comic generation in stages, updating the database as we go."""
     logger.info(f"Starting comic generation for ID: {comic_id}")
@@ -119,7 +141,8 @@ async def process_comic_generation(request: ComicRequest, db: Session, comic_id:
         logger.info(f"Text generation completed in {text_time - start_time:.2f} seconds")
         
         # Step 2: Generate images (this runs concurrently for all images)
-        comic_list = await generate_comic_images(comic_list)
+        # comic_list = await generate_comic_images(comic_list)
+        comic_list = await generate_comic_images_flux(comic_list)
         
         # Final update with all images
         comic = db.get(Comic, comic_id)
@@ -270,13 +293,30 @@ async def extend_comic(comic_id: str, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Comic not found")
 
     original_pages = comic.pages
-    new_pages = original_pages + original_pages + original_pages  # Duplicate pages 3 times
+    new_pages = generate_new_comic_pages(original_pages, num_pages=3)
+    new_pages = [{**new_page, 'image_url': ""} for new_page in new_pages]
 
-    comic.pages = new_pages
+
+    # new_pages = original_pages + original_pages + original_pages  # Duplicate pages 3 times
+    # Update comic with combined pages
+    combined_pages = original_pages + new_pages
+    
+    # Update comic status to processing
+    comic.pages = combined_pages
+    comic.status = "processing"
     db.add(comic)
     commit_with_retry(db)
-    db.refresh(comic)
-
+    
+    # Create a background task for image generation
+    task = asyncio.create_task(process_extended_pages(comic_id, new_pages, db))
+    
+    # Keep track of task to prevent garbage collection
+    active_tasks.add(task)
+    task.add_done_callback(lambda t: active_tasks.remove(t))
+    
+    logger.info(f"Started background task to extend comic {comic_id} with {len(new_pages)} new pages")
+    
+    # Return the comic with the new pages (images will be generated in background)
     return ComicResponse(
         id=comic.id,
         prompt=comic.prompt,
@@ -284,5 +324,51 @@ async def extend_comic(comic_id: str, request: Request, db: Session = Depends(ge
         summary=comic.summary,
         pages=comic.pages,
         created_at=comic.created_at.isoformat() if comic.created_at else None,
-        status=comic.status
+        status="processing"
     )
+
+async def process_extended_pages(comic_id: str, new_pages: list, db: Session):
+    """Process image generation for extended comic pages."""
+    start_time = time.time()
+    logger.info(f"Starting image generation for extended comic {comic_id} with {len(new_pages)} new pages")
+    
+    try:
+        # Create a temporary structure for the flux image generator
+        comic_list = {"pages": new_pages}
+        
+        # Generate images for new pages
+        updated_comic_list = await generate_comic_images_flux(comic_list)
+        updated_new_pages = updated_comic_list["pages"]
+        
+        # Get the comic and update with new images
+        comic = db.get(Comic, comic_id)
+        if not comic:
+            logger.error(f"Comic {comic_id} not found during extension processing")
+            return
+        
+        # Replace the new pages with their image-containing versions
+        original_pages = comic.pages[:len(comic.pages) - len(new_pages)]
+        comic.pages = original_pages + updated_new_pages
+        comic.status = "completed"
+        
+        db.add(comic)
+        commit_with_retry(db)
+        
+        # Send webhook notification
+        send_webhook(comic_id)
+        
+        total_time = time.time() - start_time
+        logger.info(f"Extended comic image generation completed in {total_time:.2f} seconds")
+    
+    except Exception as e:
+        logger.error(f"Error in comic extension process: {e}", exc_info=True)
+        
+        # Update comic status to failed
+        try:
+            comic = db.get(Comic, comic_id)
+            if comic:
+                comic.status = "failed"
+                db.add(comic)
+                commit_with_retry(db)
+        except Exception as db_error:
+            logger.error(f"Failed to update comic status after extension error: {db_error}")

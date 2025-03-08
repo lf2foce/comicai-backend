@@ -21,7 +21,15 @@ executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
 # Initialize Together clients
 client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 async_client = AsyncTogether(api_key=os.environ.get("TOGETHER_API_KEY"))
+def get_gemini_client():
+    """Create and return a new Gemini client."""
+    return genai.Client(
+        vertexai=True,
+        project="thematic-land-451915-j3",
+        location="us-central1",
+    )
 
+client_gemini = get_gemini_client()
 # Initialize image generation semaphore - limit concurrent requests
 semaphore = asyncio.Semaphore(1)  # Allow 2 concurrent image generations
 
@@ -37,7 +45,7 @@ async def generate_image_flux_async(prompt: str) -> str:
                 steps=14,
                 n=1,
                 height=1024,
-                width=768,
+                width=1024,
             )
         )
 
@@ -54,15 +62,14 @@ async def generate_image_flux_async(prompt: str) -> str:
 async def generate_image_flux_free_async(prompt: str) -> str:
     """Asynchronously generate an image using the Together AI API with free tier."""
     try:
-        await asyncio.sleep(2)
-        async with semaphore:  # Limit concurrent requests
+        # async with semaphore:  # Limit concurrent requests
             response = await async_client.images.generate(
                 model="black-forest-labs/FLUX.1-schnell",
                 prompt=prompt,
                 steps=12,
                 n=1,
-                height=768,
-                width=768,
+                height=1024,
+                width=1024,
             )
 
             if not response or not response.data:
@@ -74,23 +81,15 @@ async def generate_image_flux_free_async(prompt: str) -> str:
         logging.error(f"❌ Image generation failed: {e}")
         return ""  # Return empty string on failure
 
-def get_gemini_client():
-    """Create and return a new Gemini client."""
-    return genai.Client(
-        vertexai=True,
-        project="thematic-land-451915-j3",
-        # location="us-central1",
-        location="us-east1",
-    )
 
 def generate_image_gemini(prompt):
     """Generates an image synchronously using the Gemini API."""
     try:
         # Add a small delay to avoid rate limiting
-        time.sleep(2)
+        time.sleep(15)
         print("Generating image with Gemini...")
         # Get a fresh client
-        client_gemini = get_gemini_client()
+        
         
         response = client_gemini.models.generate_images(
             model='imagen-3.0-generate-002',
@@ -160,15 +159,13 @@ async def generate_and_upload_async(prompt, prefix="gemini_image_", bucket_name=
     try:
         image_bytes = await generate_image_gemini_async(prompt)
         if image_bytes is None:
-            logging.error(f"Failed to generate image for prompt: {prompt}")
+            logging.error(f"⚠️ Failed to generate image for prompt: {prompt}")
             return ""
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_id = uuid.uuid4().hex[:8]
-        filename = f"{prefix}{timestamp}_{unique_id}.png"
-
         url = await upload_image_gg_storage_async(image_bytes, bucket_name, prefix)
-        return url or ""
+        print(f"✅ Uploaded Image URL: {url}")  # Add this line
+
+        return url or ""  # Ensure empty string if upload fails
     except Exception as e:
-        logging.error(f"Error in generate_and_upload_async: {e}", exc_info=True)
+        logging.error(f"❌ Error in generate_and_upload_async: {e}")
         return ""
