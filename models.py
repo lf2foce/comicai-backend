@@ -20,9 +20,6 @@ class ComicPage(BaseModel):
     art_style: str
     final_transition: str # Optional[str]=None
 
-# class Character(BaseModel):
-#     description: str
-#     personality: str
 
 class Character(BaseModel):
     name: str
@@ -39,15 +36,17 @@ class ComicScript(BaseModel):
 # ✅ Request Model for Generating a Comic
 class ComicRequest(SQLModel):
     prompt: str
+    user_id: Optional[str] = None  # Clerk User ID (NULL for guests)
 
 # ✅ Response Model for Returning a Comic
 class ComicResponse(SQLModel):
-    id: str
-    prompt: str
-    title: str
-    summary: str
+    id: Optional[str]
+    prompt: Optional[str]
+    title: Optional[str]
+    summary: Optional[str]
     pages: List[dict]  # Ensure pages are stored as a structured list
-    created_at: str  # ISO format datetime
+    created_at: Optional[str]  # ISO format datetime
+    status: str
 
 # ✅ Database Model for Comic
 class Comic(SQLModel, table=True):
@@ -57,5 +56,9 @@ class Comic(SQLModel, table=True):
     pages: List[dict] = Field(sa_column=Column(JSONB))  # ✅ Store as JSON in PostgreSQL
     summary: str
     created_at: datetime = Field(default_factory=datetime.now)
+
+    user_id: Optional[str] = Field(default=None)  # Clerk User ID (NULL for guests)
+    visibility: str = Field(default="community")  # "community" or "private"
+    status: str = Field(default="processing")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)  # ✅ Allow Pydantic to handle unknown types

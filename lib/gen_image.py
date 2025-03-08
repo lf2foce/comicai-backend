@@ -2,6 +2,7 @@ from together import Together
 import uuid  # Import the uuid module for generating unique IDs
 import datetime
 import os
+import logging
 import asyncio
 from together import AsyncTogether
 
@@ -12,7 +13,10 @@ from io import BytesIO
 import base64
 import concurrent.futures
 import time
+
 # executor = ThreadPoolExecutor()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)  # ✅ Prevent overloading the API
 
 client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
@@ -20,6 +24,12 @@ async_client = AsyncTogether(api_key=os.environ.get("TOGETHER_API_KEY"))
 
 # client_gemini = genai.Client(api_key=os.environ['GEMINI_API_KEY'])
 
+genai_client = genai.Client(
+    vertexai=True,
+    project="thematic-land-451915-j3",
+    # location="us-central1",
+    location="asia-southeast1",
+    )
 
 
 async def generate_image_flux_async(prompt: str) -> str:
@@ -74,75 +84,46 @@ async def generate_image_flux_free_async(prompt: str) -> str:
         return ""  # Return empty string on failure
 
 
-# async def generate_image_gemini(prompt):
-#     """Generate an image using the Gemini AI API and return base64."""
-#     loop = asyncio.get_running_loop()
-#     try:
-#         response = await loop.run_in_executor(executor, lambda: client_gemini.models.generate_images(
-#             model='imagen-3.0-generate-002',
-#             prompt=prompt,
-#             config=types.GenerateImagesConfig(
-#                 number_of_images=1,
-#                 aspect_ratio="1:1",
-#             )
-#         ))
 
-#         await asyncio.sleep(10)
-#         generated_image = response.generated_images[0]
-#         image_bytes = generated_image.image.image_bytes
-#         base64_encoded = base64.b64encode(image_bytes).decode("utf-8")
-#         return base64_encoded
-#     except Exception as e:
-#         import traceback
-#         print(f"Error in generate_image_gemini: {e}")
-#         traceback.print_exc()
-#         return None
 
-# async def create_google_cloud_storage_url(base64_image, filename, bucket_name="bucket_comic"):
-#     """Uploads base64 image to Google Cloud Storage and returns a public URL."""
-#     loop = asyncio.get_running_loop()
-#     try:
-#         client = storage.Client()
-#         bucket = client.bucket(bucket_name)
+def generate_image_gemini(prompt):
+    """Generates an image synchronously using the genai client."""
+    time.sleep(2)
+    try:
+        response = genai_client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="1:1",
+            )
+        )
         
-#         blob_name = f"{'testai'}/{filename}"
-#         blob = bucket.blob(blob_name)
+        if response and response.generated_images: #check if response and generated_images are not None
+            return response.generated_images[0].image.image_bytes
+        else:
+            logging.error("API did not return any generated images.")
+            return None #return None if no image is generated.
+        # return response.generated_images[0].image.image_bytes
+    except Exception as e:
+        logging.error(f"Error generating image: {e}", exc_info=True)
+        return None
 
-#         # blob = bucket.blob(filename)
-
-#         image_bytes = base64.b64decode(base64_image)
-#         await loop.run_in_executor(executor, lambda: blob.upload_from_file(BytesIO(image_bytes), content_type="image/png"))
-
-#         # Since the bucket is public, we can directly get the public URL
-#         return blob.public_url
-#     except Exception as e:
-#         import traceback
-#         print(f"Error in create_google_cloud_storage_url: {e}")
-#         traceback.print_exc()
-#         return None
-
-# async def generate_and_upload(prompt, prefix="gemini_image_", bucket_name="bucket_comic"):
-#     """Combines image generation and uploading to GCS with auto-generated filename."""
-#     try:
-#         base64_image = await generate_image_gemini(prompt)
-#         if base64_image is None:
-#             print(f"generate_image_gemini returned None for prompt: {prompt}")
-#             return None
-
-#         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-#         unique_id = uuid.uuid4().hex[:8]
-#         filename = f"{prefix}{timestamp}_{unique_id}.png"
-
-#         url = await create_google_cloud_storage_url(base64_image, filename, bucket_name)
-#         if url is None:
-#             print(f"create_google_cloud_storage_url returned None for filename: {filename}")
-#             return None
-#         return url
-#     except Exception as e:
-#         import traceback
-#         print(f"Error in generate_and_upload: {e}")
-#         traceback.print_exc()
-#         return None
+async def upload_image_gg_storage_async(image_bytes, bucket_name, prefix):
+    """Uploads an image asynchronously to Google Cloud Storage."""
+    try:
+        blob_name = f"{prefix}{uuid.uuid4()}.png"
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        if not bucket.exists():
+            logging.error(f"Bucket {bucket_name} does not exist.")
+            return ""
+        blob = bucket.blob(blob_name)
+        blob.upload_from_string(image_bytes, content_type="image/png")
+        return blob.public_url
+    except Exception as e:
+        logging.error(f"Error uploading image: {e}", exc_info=True)
+        return ""
 
 
 

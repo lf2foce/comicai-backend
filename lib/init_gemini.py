@@ -4,6 +4,7 @@ import tempfile
 # from google.oauth2 import service_account
 import vertexai
 
+
 def init_vertexai():
     """Initialize Google Vertex AI with service account credentials on Render."""
     try:
@@ -42,6 +43,7 @@ def init_vertexai():
         vertexai.init(project=project_id, location=location)
 
         print(f"✅ Successfully initialized Vertex AI for project: {project_id} (Region: {location})")
+       
         return True
 
     except Exception as e:
