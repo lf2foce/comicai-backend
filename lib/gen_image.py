@@ -23,7 +23,7 @@ client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 async_client = AsyncTogether(api_key=os.environ.get("TOGETHER_API_KEY"))
 
 # Initialize image generation semaphore - limit concurrent requests
-semaphore = asyncio.Semaphore(2)  # Allow 2 concurrent image generations
+semaphore = asyncio.Semaphore(1)  # Allow 2 concurrent image generations
 
 async def generate_image_flux_async(prompt: str) -> str:
     """Asynchronously generate an image using the Together AI API."""
@@ -54,6 +54,7 @@ async def generate_image_flux_async(prompt: str) -> str:
 async def generate_image_flux_free_async(prompt: str) -> str:
     """Asynchronously generate an image using the Together AI API with free tier."""
     try:
+        await asyncio.sleep(2)
         async with semaphore:  # Limit concurrent requests
             response = await async_client.images.generate(
                 model="black-forest-labs/FLUX.1-schnell",
@@ -78,15 +79,16 @@ def get_gemini_client():
     return genai.Client(
         vertexai=True,
         project="thematic-land-451915-j3",
-        location="us-central1",
+        # location="us-central1",
+        location="us-east1",
     )
 
 def generate_image_gemini(prompt):
     """Generates an image synchronously using the Gemini API."""
     try:
         # Add a small delay to avoid rate limiting
-        time.sleep(1)
-        
+        time.sleep(2)
+        print("Generating image with Gemini...")
         # Get a fresh client
         client_gemini = get_gemini_client()
         
