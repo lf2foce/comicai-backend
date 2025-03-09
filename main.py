@@ -34,7 +34,7 @@ connected_clients: List[WebSocket] = []
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://comic.thietkeai.com", "http://localhost:3000"],
+    allow_origins=["*"], #"https://comic.thietkeai.com", "http://localhost:3000"
     allow_origin_regex="https://.*",
     allow_credentials=True,
     allow_methods=["*"],
@@ -65,23 +65,35 @@ def on_startup():
 # WebSocket endpoint for real-time updates
 @app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    connected_clients.append(websocket)
-    logger.info(f"WebSocket client connected. Total clients: {len(connected_clients)}")
+    
     
     try:
-        # Wait for the WebSocket to disconnect
+        await websocket.accept()
+        print(f"Incoming WebSocket connection request from {websocket.client}")
+        await websocket.send_json({"message": "Hello from FastAPI WebSocket!"})
+        connected_clients.append(websocket)
+        logger.info(f"WebSocket client connected. Total clients: {len(connected_clients)}")
+        
+        # Keep connection alive
         while True:
-            # This will keep the connection alive
-            # We can receive messages from the client if needed
-            data = await websocket.receive_text()
-            logger.debug(f"Received message from WebSocket client: {data}")
-    except WebSocketDisconnect:
-        logger.info("WebSocket client disconnected")
+            try:
+                # Wait for messages (will keep connection open)
+                data = await websocket.receive_text()
+                logger.debug(f"Received message from WebSocket client: {data}")
+            except WebSocketDisconnect:
+                logger.info("WebSocket client disconnected normally")
+                break
+            except Exception as e:
+                logger.error(f"Error in WebSocket connection: {e}")
+                break
+                
+    except Exception as e:
+        logger.error(f"Error accepting WebSocket connection: {str(e)}")
     finally:
-        # Remove the client from our list when they disconnect
+        # Remove client on disconnection
         if websocket in connected_clients:
             connected_clients.remove(websocket)
+        logger.info(f"WebSocket client removed. Remaining clients: {len(connected_clients)}")
 
 # Broadcast a message to all connected WebSocket clients
 async def broadcast_comic_update(comic_id: str, db: Session):
@@ -165,7 +177,7 @@ async def generate_comic_images_flux(comic_list):
 
     # Assign generated URLs back to comic pages
     for i, page in enumerate(comic_list["pages"]):
-        page["image_url"] = image_urls[i] if image_urls[i] else "/placeholder.png"  # Default if empty
+        page["image_url"] = image_urls[i] if image_urls[i] else ""  # Default if empty /placeholder.svg
         logging.info(f"✅ Image {i} URL: {page['image_url']}")
 
     return comic_list
