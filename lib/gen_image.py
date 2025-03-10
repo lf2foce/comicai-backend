@@ -31,7 +31,10 @@ def get_gemini_client():
 
 client_gemini = get_gemini_client()
 # Initialize image generation semaphore - limit concurrent requests
-semaphore = asyncio.Semaphore(1)  # Allow 2 concurrent image generations
+semaphore = asyncio.Semaphore(1)  # Allow 1 concurrent image generation
+
+# Define a placeholder image URL for error cases
+PLACEHOLDER_ERROR_IMAGE = "/placeholder-error.png"  # Local path to avoid Next.js domain issues
 
 async def generate_image_flux_async(prompt: str) -> str:
     """Asynchronously generate an image using the Together AI API."""
@@ -50,36 +53,52 @@ async def generate_image_flux_async(prompt: str) -> str:
         )
 
         if not image_response or not image_response.data:
-            raise ValueError("Invalid response from Together AI")
+            logging.warning("Empty response from Together AI")
+            return PLACEHOLDER_ERROR_IMAGE
 
         image_url = image_response.data[0].url
         return image_url
 
     except Exception as e:
         logging.error(f"❌ Image generation failed: {e}")
-        return ""  # Return empty string on failure
+        return PLACEHOLDER_ERROR_IMAGE  # Return placeholder on failure
 
 async def generate_image_flux_free_async(prompt: str) -> str:
     """Asynchronously generate an image using the Together AI API with free tier."""
     try:
-        # async with semaphore:  # Limit concurrent requests
-            response = await async_client.images.generate(
-                model="black-forest-labs/FLUX.1-schnell",
-                prompt=prompt,
-                steps=12,
-                n=1,
-                height=1024,
-                width=1024,
-            )
-
-            if not response or not response.data:
-                raise ValueError("Invalid response from Together AI")
-
-            return response.data[0].url
+        # Implement exponential backoff for rate limiting
+        max_retries = 3
+        retry_delay = 2  # Start with 2 seconds
+        
+        for attempt in range(max_retries):
+            try:
+                response = await async_client.images.generate(
+                    model="black-forest-labs/FLUX.1-schnell-free",
+                    # model="black-forest-labs/FLUX.1-schnell",
+                    prompt=prompt,
+                    steps=4,
+                    n=1,
+                    height=512,
+                    width=512,
+                )
+                
+                if not response or not response.data:
+                    logging.warning("Empty response from Together AI free tier")
+                    return PLACEHOLDER_ERROR_IMAGE
+                
+                return response.data[0].url
+                
+            except Exception as e:
+                if "rate limit" in str(e).lower() and attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)
+                    logging.info(f"Rate limited, retrying in {wait_time} seconds (attempt {attempt+1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise  # Re-raise if not a rate limit or we're out of retries
     
     except Exception as e:
-        logging.error(f"❌ Image generation failed: {e}")
-        return ""  # Return empty string on failure
+        logging.error(f"❌ Image generation failed after retries: {e}")
+        return PLACEHOLDER_ERROR_IMAGE  # Return placeholder on failure
 
 
 def generate_image_gemini(prompt):
@@ -88,8 +107,6 @@ def generate_image_gemini(prompt):
         # Add a small delay to avoid rate limiting
         time.sleep(15)
         print("Generating image with Gemini...")
-        # Get a fresh client
-        
         
         response = client_gemini.models.generate_images(
             model='imagen-3.0-generate-002',
@@ -113,7 +130,7 @@ async def upload_image_gg_storage_async(image_bytes, bucket_name, prefix):
     """Uploads an image asynchronously to Google Cloud Storage."""
     if image_bytes is None:
         logging.error("Cannot upload None image bytes")
-        return ""
+        return PLACEHOLDER_ERROR_IMAGE
         
     try:
         blob_name = f"{prefix}{uuid.uuid4()}.png"
@@ -125,7 +142,7 @@ async def upload_image_gg_storage_async(image_bytes, bucket_name, prefix):
         
         if not await loop.run_in_executor(None, bucket.exists):
             logging.error(f"Bucket {bucket_name} does not exist.")
-            return ""
+            return PLACEHOLDER_ERROR_IMAGE
             
         blob = bucket.blob(blob_name)
         await loop.run_in_executor(
@@ -136,11 +153,11 @@ async def upload_image_gg_storage_async(image_bytes, bucket_name, prefix):
         return blob.public_url
     except Exception as e:
         logging.error(f"Error uploading image: {e}", exc_info=True)
-        return ""
+        return PLACEHOLDER_ERROR_IMAGE
 
 async def generate_image_gemini_async(prompt):
     """Generate an image using the Gemini AI API asynchronously and return raw image bytes."""
-    async with semaphore:  # Limit to 2 concurrent requests
+    async with semaphore:  # Limit concurrent requests
         try:
             # Run the synchronous Gemini image generation in a thread pool
             loop = asyncio.get_running_loop()
@@ -155,17 +172,21 @@ async def generate_image_gemini_async(prompt):
             return None
 
 async def generate_and_upload_async(prompt, prefix="gemini_image_", bucket_name="bucket_comic"):
-    """Generates an image and uploads it asynchronously, returning the public URL."""
+    """Generates an image and uploads it asynchronously, returning the public URL or placeholder."""
     try:
         image_bytes = await generate_image_gemini_async(prompt)
         if image_bytes is None:
             logging.error(f"⚠️ Failed to generate image for prompt: {prompt}")
-            return ""
+            return PLACEHOLDER_ERROR_IMAGE
 
         url = await upload_image_gg_storage_async(image_bytes, bucket_name, prefix)
-        print(f"✅ Uploaded Image URL: {url}")  # Add this line
+        print(f"✅ Uploaded Image URL: {url}")
 
-        return url or ""  # Ensure empty string if upload fails
+        # Ensure we don't return example.com URLs or other unconfigured domains
+        if "example.com" in url or not url:
+            return PLACEHOLDER_ERROR_IMAGE
+            
+        return url
     except Exception as e:
         logging.error(f"❌ Error in generate_and_upload_async: {e}")
-        return ""
+        return PLACEHOLDER_ERROR_IMAGE

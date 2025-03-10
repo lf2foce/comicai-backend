@@ -133,9 +133,10 @@ async def generate_comic_text(request: ComicRequest):
     """Generate comic text, isolated to make it easier to run in thread pool."""
     return gemini_text_generation(request)
 
+PLACEHOLDER_ERROR_IMAGE = "/images/placeholder-error.png"  # Local path to avoid Next.js domain issues
+
 async def generate_comic_images(comic_list):
     """Generate and upload images for comic pages."""
-    # [existing implementation]
     bucket_name = "bucket_comic"
     prefix = "gemini_image_"
     
@@ -152,34 +153,60 @@ async def generate_comic_images(comic_list):
     for page, task in image_tasks:
         try:
             url = await task
-            page["image_url"] = url if url else ""
-            # After each image is done, we have a partially complete comic
+            # Ensure we never set an invalid URL
+            if not url or "example.com" in url:
+                page["image_url"] = PLACEHOLDER_ERROR_IMAGE
+            else:
+                page["image_url"] = url
             logger.info(f"Generated image for prompt: {page['image_prompt'][:30]}...")
         except Exception as e:
             logger.error(f"Failed to generate image: {e}")
-            page["image_url"] = ""
+            page["image_url"] = PLACEHOLDER_ERROR_IMAGE
     
     return comic_list
 
 async def generate_comic_images_flux(comic_list):
     """Generate and upload images asynchronously using Together AI."""
-    # [existing implementation]
     logging.info(f"🚀 Starting image generation for {len(comic_list['pages'])} pages.")
 
-    # Generate all images asynchronously
-    try:
-        image_urls = await asyncio.gather(
-            *[generate_image_flux_free_async(page["image_prompt"]) for page in comic_list["pages"]]
-        )
-    except Exception as e:
-        logging.error(f"❌ Error generating images: {e}")
-        image_urls = [""] * len(comic_list["pages"])  # Fallback to empty URLs
-
-    # Assign generated URLs back to comic pages
-    for i, page in enumerate(comic_list["pages"]):
-        page["image_url"] = image_urls[i] if image_urls[i] else ""  # Default if empty /placeholder.svg
-        logging.info(f"✅ Image {i} URL: {page['image_url']}")
-
+    # Process pages in batches to avoid rate limits
+    batch_size = 5  # Adjust based on rate limits
+    all_pages = comic_list["pages"]
+    
+    for i in range(0, len(all_pages), batch_size):
+        batch_pages = all_pages[i:i+batch_size]
+        logging.info(f"Processing batch {i//batch_size + 1} with {len(batch_pages)} pages")
+        
+        # Generate images for this batch
+        image_tasks = []
+        for page in batch_pages:
+            task = asyncio.create_task(generate_image_flux_free_async(page["image_prompt"]))
+            image_tasks.append((page, task))
+        
+        # Wait for batch to complete with timeout
+        for page, task in image_tasks:
+            try:
+                # Add timeout to prevent hanging
+                url = await asyncio.wait_for(task, timeout=60)
+                
+                # Validate URL before assigning
+                if not url or "example.com" in url:
+                    page["image_url"] = PLACEHOLDER_ERROR_IMAGE
+                else:
+                    page["image_url"] = url
+                    
+                logging.info(f"✅ Image URL set: {page['image_url'][:60]}...")
+            except asyncio.TimeoutError:
+                logging.error(f"⏱️ Timeout generating image for prompt: {page['image_prompt'][:30]}...")
+                page["image_url"] = PLACEHOLDER_ERROR_IMAGE
+            except Exception as e:
+                logging.error(f"❌ Error generating image: {e}")
+                page["image_url"] = PLACEHOLDER_ERROR_IMAGE
+        
+        # Add a delay between batches to avoid rate limits
+        if i + batch_size < len(all_pages):
+            await asyncio.sleep(6)  # Wait 6 seconds between batches
+    
     return comic_list
 
 async def process_comic_generation(request: ComicRequest, db: Session, comic_id: str):
@@ -215,7 +242,8 @@ async def process_comic_generation(request: ComicRequest, db: Session, comic_id:
         logger.info(f"Text generation completed in {text_time - start_time:.2f} seconds")
         
         # Step 2: Generate images (this runs concurrently for all images)
-        comic_list = await generate_comic_images_flux(comic_list)
+        # comic_list = await generate_comic_images_flux(comic_list)
+        comic_list = await generate_comic_images(comic_list)
         
         # Final update with all images
         comic = db.get(Comic, comic_id)
@@ -307,6 +335,7 @@ async def extend_comic(comic_id: str, request: Request, background_tasks: Backgr
         raise HTTPException(status_code=400, detail="Missing prompt in request")
 
     comic = db.get(Comic, comic_id)
+    
     if not comic:
         raise HTTPException(status_code=404, detail="Comic not found")
 
