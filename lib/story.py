@@ -412,6 +412,7 @@ Create only **4 pages of the generated comic script**. Try to make the scenes as
 ---
 
 #### **4. Structured `image_prompt` Format for AI Consistency, Visual Appeal & Gemini Optimization**
+   - **Scene content suitable for kids:** The `image_prompt` should be appropriate for children, avoiding explicit content, violence, or mature themes. Should worked best with imagen3
    - **Prioritize Visual Impact & Kid-Friendly Cartoons:** The `image_prompt` should aim to generate visually engaging and dynamic cartoon images suitable for children.
    - **Concise Scene Setting:**  Describe the scene environment **directly and concisely**, avoiding verbose phrasing like "Scene:".  Focus on impactful keywords.  Instead of "Scene: A dimly lit marketplace...", just use "A dimly lit marketplace at night...".
    - **Dynamic Scene Descriptions:** Make scene descriptions visually rich and dynamic. Include details about:

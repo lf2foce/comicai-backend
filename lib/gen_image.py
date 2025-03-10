@@ -102,29 +102,40 @@ async def generate_image_flux_free_async(prompt: str) -> str:
 
 
 def generate_image_gemini(prompt):
-    """Generates an image synchronously using the Gemini API."""
-    try:
-        # Add a small delay to avoid rate limiting
-        time.sleep(15)
-        print("Generating image with Gemini...")
-        
-        response = client_gemini.models.generate_images(
-            model='imagen-3.0-generate-002',
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="1:1",
+    """Generates an image using the Gemini API with simple retry logic."""
+    max_retries = 3
+    retry_delay = 2  # Start with 2 seconds
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Generating image with Gemini... (attempt {attempt+1}/{max_retries})")
+            
+            response = client_gemini.models.generate_images(
+                model='imagen-3.0-fast-generate-001',
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    aspect_ratio="1:1",
+                )
             )
-        )
+            
+            if response and response.generated_images:
+                return response.generated_images[0].image.image_bytes
+            else:
+                logging.warning("Empty response from Gemini API")
+                
+        except Exception as e:
+            logging.warning(f"Attempt {attempt+1} failed: {e}")
         
-        if response and response.generated_images:
-            return response.generated_images[0].image.image_bytes
-        else:
-            logging.error("API did not return any generated images.")
-            return None
-    except Exception as e:
-        logging.error(f"Error generating image with Gemini: {e}", exc_info=True)
-        return None
+        # If we get here, we need to retry after a delay
+        if attempt < max_retries - 1:
+            wait_time = retry_delay * (2 ** attempt)
+            print(f"Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+    
+    # If we've exhausted all retries
+    logging.error("Failed to generate image after all retry attempts")
+    return None
 
 async def upload_image_gg_storage_async(image_bytes, bucket_name, prefix):
     """Uploads an image asynchronously to Google Cloud Storage."""

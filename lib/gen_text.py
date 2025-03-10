@@ -163,16 +163,18 @@ def generate_new_comic_pages(previous_pages, num_pages=3):
     )
 
     prompt = f"""
-    Continue this comic story (in the previous language used). Here is the previous storyline:
+    **Continuation of Comic Story:**  Your task is to continue an existing comic story. Please generate the next scenes to advance the narrative, maintaining consistency with the previous storyline.  **Continue the story in the same language as the provided previous storyline.**
 
-    {previous_story}
+**Previous Storyline:** Here is the story so far:
+{previous_story}
 
-    Generate the next {num_pages} scenes with:
-    - A scene description
-    - Full text narration
-    - Image prompt (cartoon style) keep the same character as the previous scene
+**Generate Next Scenes:** Please generate the following for the next {num_pages} scenes:
+- **Scene Description:** A brief description of what is happening in the scene and the setting.
+- **Full Text Narration:**  The complete text narration/dialogue for the scene, suitable for a comic panel.
+- **Image Prompt (Cartoon Style, Same Characters & Style):** A detailed image prompt for a cartoon style image. **Crucially, ensure the image prompt is designed to keep the same characters as in the previous scenes and maintain a consistent cartoon style.**
 
-    Format the response as a structured JSON list.
+**Output Format:**  Please format your response as a structured JSON list. Each element in the list should represent a scene and contain the scene_description, full_text, and image_prompt
+
     """
 
     print('==========starting new comic generation \n')
