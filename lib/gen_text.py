@@ -171,7 +171,7 @@ def generate_new_comic_pages(previous_pages, num_pages=3):
 **Generate Next Scenes:** Please generate the following for the next {num_pages} scenes:
 - **Scene Description:** A brief description of what is happening in the scene and the setting.
 - **Full Text Narration:**  The complete text narration/dialogue for the scene, suitable for a comic panel.
-- **Image Prompt (Cartoon Style, Same Characters & Style):** A detailed image prompt for a cartoon style image. **Crucially, ensure the image prompt is designed to keep the same characters as in the previous scenes and maintain a consistent cartoon style.**
+- **Image Prompt (Cartoon Style, Same Characters & Style):** A detailed image prompt for a cartoon style image. **Crucially, ensure the image prompt is designed to keep the same characters as in the previous scenes and maintain a consistent style.**
 
 **Output Format:**  Please format your response as a structured JSON list. Each element in the list should represent a scene and contain the scene_description, full_text, and image_prompt
 

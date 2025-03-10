@@ -14,7 +14,7 @@ class DialogueEntry(BaseModel):
 class ComicPage(BaseModel):
     scene: str
     dialogue: List[DialogueEntry]  # List of dialogues
-    image_url: str
+    image_url: Optional[str] = None
     image_prompt: str
     text_full: str
     art_style: str
