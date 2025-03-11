@@ -12,7 +12,7 @@ from google.oauth2 import service_account
 from .init_gemini import init_vertexai
 # from ..models import Comic, ComicRequest, ComicResponse
 from models import ComicScript
-from lib.story import system_prompt_v1, system_prompt_v2, system_prompt_v3, system_prompt_v4, system_prompt_v5
+from lib.story import system_prompt_v1, system_prompt_v2, system_prompt_v3, system_prompt_v4, system_prompt_v5, system_prompt_v5_continue
 # Load environment variables
 load_dotenv()
 
@@ -140,7 +140,7 @@ def gemini_text_generation_new(prompt):
                 'response_mime_type': 'application/json',
                 'response_schema': ComicScript,  # Use ComicScript as the expected schema
                 'system_instruction': types.Part.from_text(
-                    text=system_prompt_v5
+                    text=system_prompt_v5_continue
                 ),
             },
         )
@@ -153,28 +153,69 @@ def gemini_text_generation_new(prompt):
         return comic_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini API Error: {str(e)}")
-    
+
+import re
+# Function to ensure character descriptions remain consistent in new `image_prompt`
+def ensure_character_consistency(image_prompt, character_descriptions):
+    """
+    Replaces character names in an image_prompt with their full descriptions for visual consistency.
+    """
+    for char in character_descriptions:
+        name = char["name"]
+        full_description = f"Character: {name}, {char['description']}"
+        image_prompt = re.sub(fr"Character:\s*{re.escape(name)}\b", full_description, image_prompt)
+
+    return image_prompt
+# Extract unique character descriptions from previous pages' image_prompts
+def extract_character_descriptions(previous_pages):
+    """
+    Extracts character descriptions from previous pages' image_prompts to ensure consistency.
+    """
+    character_descriptions = {}
+
+    for page in previous_pages:
+        if "image_prompt" in page:
+            matches = re.findall(r"Character:\s*([^,]+),\s*(.*?)(?=\s*\|\s*|$)", page["image_prompt"])
+            for name, description in matches:
+                character_descriptions[name.strip()] = {
+                    "name": name.strip(),
+                    "description": description.strip()
+                }
+
+    return list(character_descriptions.values())
+
 def generate_new_comic_pages(previous_pages, num_pages=3):
     """Generate multiple new comic pages using AI with full context."""
     
-    # Convert previous pages into structured context for AI
-    previous_story = "\n\n".join(
-        [f"Scene {i+1}: {page['text_full']}\nText and {page['final_transition']}\n" for i, page in enumerate(previous_pages)]
-    )
+    # Extract previous story in a structured format
+    previous_story = "\n\n".join([
+        f"Page {i+1}: {page['scene']}\n"
+        f"Full Text: {page['text_full']}\n"
+        f"Dialogue: " + " | ".join([f"{d['character']}: {d['text']}" for d in page.get('dialogue', [])]) + "\n"
+        f"Final Transition: {page['final_transition']}"
+        for i, page in enumerate(previous_pages)
+    ])
 
+    # Get characters with their exact descriptions
+    characters = extract_character_descriptions(previous_pages)
+
+    # Generate the prompt for story continuation
     prompt = f"""
-    **Continuation of Comic Story:**  Your task is to continue an existing comic story. Please generate the next scenes to advance the narrative, maintaining consistency with the previous storyline.  **Continue the story in the same language as the provided previous storyline.**
-
-**Previous Storyline:** Here is the story so far:
-{previous_story}
-
-**Generate Next Scenes:** Please generate the following for the next {num_pages} scenes:
-- **Scene Description:** A brief description of what is happening in the scene and the setting.
-- **Full Text Narration:**  The complete text narration/dialogue for the scene, suitable for a comic panel.
-- **Image Prompt (Cartoon Style, Same Characters & Style):** A detailed image prompt for a cartoon style image. **Crucially, ensure the image prompt is designed to keep the same characters as in the previous scenes and maintain a consistent style.**
-
-**Output Format:**  Please format your response as a structured JSON list. Each element in the list should represent a scene and contain the scene_description, full_text, and image_prompt
-
+    {{
+    "task": "Continue the existing comic story while maintaining full character, art style, and narrative consistency.",
+    "previous_story": "{previous_story}",
+    "characters": {characters},
+    "num_pages": "{num_pages}",
+    "requirements": {{
+        "language": "Follow the language of the previous story. If in Vietnamese, keep `image_prompt` and `characters` in English.",
+        "art_style": "Maintain the exact same art style as previous pages (e.g., cartoon style, anime style).",
+        "scene_progression": "Ensure smooth and logical story progression.",
+        "image_prompt_structure": "Strictly reuse character descriptions in all `image_prompt`s to maintain visual consistency.",
+        "dialogue": "Keep character interactions expressive and engaging.",
+        "image_prompt_character_consistency": "For every `image_prompt`, replace any character mention with their full description. Use the following format: `Character: [Name], [Exact Description]`, followed by scene-specific actions.",
+        "example_image_prompt": "cartoon style | Scene: Bắp soaring through the sky, dodging a playful gust of wind | Character: Bắp, a small, cheerful green dragon with big blue eyes and tiny wings, happily flapping its tiny wings | Perspective: dynamic mid-air shot | Mood: adventurous, lighthearted"
+    }}
+    }}
     """
 
     print('==========starting new comic generation \n')
