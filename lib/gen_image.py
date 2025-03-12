@@ -32,7 +32,7 @@ def get_gemini_client():
 client_gemini = get_gemini_client()
 # Initialize image generation semaphore - limit concurrent requests
 semaphore = asyncio.Semaphore(1)  # Allow 1 concurrent image generation
-
+rate_limit_delay = 60/20
 # Define a placeholder image URL for error cases
 PLACEHOLDER_ERROR_IMAGE = "/placeholder-error.png"  # Local path to avoid Next.js domain issues
 
@@ -100,7 +100,7 @@ async def generate_image_flux_free_async(prompt: str) -> str:
         logging.error(f"❌ Image generation failed after retries: {e}")
         return PLACEHOLDER_ERROR_IMAGE  # Return placeholder on failure
 
-
+# 3
 def generate_image_gemini(prompt):
     """Generates an image using the Gemini API with simple retry logic."""
     max_retries = 3
@@ -166,22 +166,31 @@ async def upload_image_gg_storage_async(image_bytes, bucket_name, prefix):
         logging.error(f"Error uploading image: {e}", exc_info=True)
         return PLACEHOLDER_ERROR_IMAGE
 
-async def generate_image_gemini_async(prompt):
-    """Generate an image using the Gemini AI API asynchronously and return raw image bytes."""
-    async with semaphore:  # Limit concurrent requests
-        try:
-            # Run the synchronous Gemini image generation in a thread pool
-            loop = asyncio.get_running_loop()
-            image_bytes = await loop.run_in_executor(
-                executor,
-                lambda: generate_image_gemini(prompt)
-            )
-            return image_bytes
+# 2
+# async def generate_image_gemini_async(prompt):
+#     """Generate an image using the Gemini AI API asynchronously and return raw image bytes."""
+#     async with semaphore:  # Limit concurrent requests
+#         try:
+#             # Run the synchronous Gemini image generation in a thread pool
+#             loop = asyncio.get_running_loop()
+#             image_bytes = await loop.run_in_executor(
+#                 executor,
+#                 lambda: generate_image_gemini(prompt)
+#             )
+#             return image_bytes
             
-        except Exception as e:
-            logging.error(f"Error in generate_image_gemini_async: {e}", exc_info=True)
-            return None
+#         except Exception as e:
+#             logging.error(f"Error in generate_image_gemini_async: {e}", exc_info=True)
+#             return None
 
+async def generate_image_gemini_async(prompt):
+    """Generate an image using Gemini API asynchronously while respecting rate limits."""
+    async with semaphore:  # Ensure one-at-a-time execution
+        await asyncio.sleep(rate_limit_delay)  # Enforce delay between requests
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: generate_image_gemini(prompt))
+    
+# 1
 async def generate_and_upload_async(prompt, prefix="gemini_image_", bucket_name="bucket_comic"):
     """Generates an image and uploads it asynchronously, returning the public URL or placeholder."""
     try:

@@ -4,7 +4,7 @@ import uuid
 import time
 import asyncio
 import requests
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 from typing import List, Dict, Any
 
 from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
@@ -135,32 +135,53 @@ async def generate_comic_text(request: ComicRequest):
 
 PLACEHOLDER_ERROR_IMAGE = "/images/placeholder-error.png"  # Local path to avoid Next.js domain issues
 
+# async def generate_comic_images(comic_list):
+#     """Generate and upload images for comic pages (Gemini) ensuring all uploads complete before broadcasting."""
+#     bucket_name = "bucket_comic"
+#     prefix = "gemini_image_"
+
+#     image_tasks = []
+#     for page in comic_list['pages']:
+#         task = asyncio.create_task(
+#             generate_and_upload_async(page["image_prompt"], prefix, bucket_name)
+#         )
+#         image_tasks.append((page, task))
+
+#     # Wait for all image uploads to complete
+#     for page, task in image_tasks:
+#         try:
+#             url = await asyncio.wait_for(task, timeout=120)
+#             page["image_url"] = url if url else PLACEHOLDER_ERROR_IMAGE
+#         except asyncio.TimeoutError:
+#             logging.error(f"Timeout generating image for: {page['image_prompt'][:30]}...")
+#             page["image_url"] = PLACEHOLDER_ERROR_IMAGE
+#         except Exception as e:
+#             logging.error(f"Error generating image: {e}")
+#             page["image_url"] = PLACEHOLDER_ERROR_IMAGE
+
+#     return comic_list  # ✅ Return the full comic object, not just pages
+
 async def generate_comic_images(comic_list):
-    """Generate and upload images for comic pages (Gemini) ensuring all uploads complete before broadcasting."""
+    """Generate and upload images for comic pages (Gemini) and return only the image URLs."""
     bucket_name = "bucket_comic"
     prefix = "gemini_image_"
 
-    image_tasks = []
-    for page in comic_list['pages']:
-        task = asyncio.create_task(
-            generate_and_upload_async(page["image_prompt"], prefix, bucket_name)
-        )
-        image_tasks.append((page, task))
+    # Create async tasks for all image generation & uploads
+    image_tasks = [
+        generate_and_upload_async(page["image_prompt"], prefix, bucket_name)
+        for page in comic_list['pages']
+    ]
 
-    # Wait for all image uploads to complete
-    for page, task in image_tasks:
-        try:
-            url = await asyncio.wait_for(task, timeout=120)
-            page["image_url"] = url if url else PLACEHOLDER_ERROR_IMAGE
-        except asyncio.TimeoutError:
-            logging.error(f"Timeout generating image for: {page['image_prompt'][:30]}...")
-            page["image_url"] = PLACEHOLDER_ERROR_IMAGE
-        except Exception as e:
-            logging.error(f"Error generating image: {e}")
-            page["image_url"] = PLACEHOLDER_ERROR_IMAGE
+    # Run all tasks concurrently (but respecting Gemini API rate limits)
+    image_urls = await asyncio.gather(*image_tasks, return_exceptions=True)
 
-    return comic_list  # ✅ Return the full comic object, not just pages
+    # Handle errors and return only image URLs
+    processed_urls = [
+        url if isinstance(url, str) and url else PLACEHOLDER_ERROR_IMAGE
+        for url in image_urls
+    ]
 
+    return processed_urls  # ✅ Return only the list of image URLs
 
 async def generate_comic_images_flux(comic_list):
     """Generate and upload images asynchronously using Together AI."""
@@ -240,41 +261,41 @@ async def process_comic_generation(request: ComicRequest, db: Session, comic_id:
         
         # Step 2: Generate images (this runs concurrently for all images)
         # comic_list = await generate_comic_images_flux(comic_list)
-        comic_list = await generate_comic_images(comic_list)
+        # comic_list = await generate_comic_images(comic_list)
+        image_urls = await generate_comic_images(comic_list)
         
-        # Final update with all images
-        comic = db.get(Comic, comic_id)
-        if comic:
-            comic.pages = comic_list["pages"]
-            comic.status = "completed"
-            db.add(comic)
-            commit_with_retry(db)
-            logger.info(f"Updated comic {comic_id} with images")
-            
-            # Broadcast final update with images
-            await broadcast_comic_update(comic_id, db)
-        
-        image_time = time.time()
-        logger.info(f"Image generation completed in {image_time - text_time:.2f} seconds")
-        
-        # Send webhook notification
+        # ✅ Efficiently update JSONB image URLs one by one
+        for idx, image_url in enumerate(image_urls):
+            sql = """
+            UPDATE comic 
+            SET pages = jsonb_set(pages, '{%s, image_url}', '"%s"')
+            WHERE id = :comic_id
+            """ % (idx, image_url)
+            db.execute(text(sql), {"comic_id": comic_id})
+
+            # ✅ Commit every 3 updates to avoid large transactions
+            if idx % 3 == 0 or idx == len(image_urls) - 1:
+                commit_with_retry(db)
+                await broadcast_comic_update(comic_id, db)
+
+        # ✅ Final update: Set comic status to "completed"
+        db.execute(text("UPDATE comic SET status = 'completed' WHERE id = :comic_id"),
+                   {"comic_id": comic_id})
+        commit_with_retry(db)
+
+        await broadcast_comic_update(comic_id, db)
         send_webhook(comic_id)
-        
+
         total_time = time.time() - start_time
         logger.info(f"Total comic generation time: {total_time:.2f} seconds")
-        
+
     except Exception as e:
         logger.error(f"Error in comic generation: {e}", exc_info=True)
-        # Update comic status to failed
         try:
-            comic = db.get(Comic, comic_id)
-            if comic:
-                comic.status = "failed"
-                db.add(comic)
-                commit_with_retry(db)
-                
-                # Broadcast failure status
-                await broadcast_comic_update(comic_id, db)
+            db.execute(text("UPDATE comic SET status = 'failed' WHERE id = :comic_id"),
+                       {"comic_id": comic_id})
+            commit_with_retry(db)
+            await broadcast_comic_update(comic_id, db)
         except Exception as db_error:
             logger.error(f"Failed to update comic status: {db_error}")
 
@@ -336,17 +357,15 @@ async def extend_comic(comic_id: str, request: Request, background_tasks: Backgr
     if not comic:
         raise HTTPException(status_code=404, detail="Comic not found")
 
-    # Generate new pages based on existing ones
+    # Step 1: generating text for new pages
     original_pages = comic.pages
     new_pages = generate_new_comic_pages(original_pages, num_pages=3)
     
     # Initialize new pages with empty image URLs
     new_pages = [{**new_page, 'image_url': ""} for new_page in new_pages]
     
-    # Update comic with combined pages
-    combined_pages = original_pages + new_pages
-    
-    # Update comic status to processing
+    # Step 2: Store new pages in database first
+    combined_pages = original_pages + new_pages    
     comic.pages = combined_pages
     comic.status = "processing"
     db.add(comic)
@@ -355,8 +374,8 @@ async def extend_comic(comic_id: str, request: Request, background_tasks: Backgr
     # Broadcast the update
     await broadcast_comic_update(comic_id, db)
     
-    # Create a background task for image generation
-    task = asyncio.create_task(process_extended_pages(comic_id, new_pages, db))
+    # ✅ Step 3: Generate images separately in background
+    task = asyncio.create_task(process_extended_pages(comic_id, len(original_pages), new_pages, db))
     
     # Keep track of task to prevent garbage collection
     active_tasks.add(task)
@@ -370,12 +389,12 @@ async def extend_comic(comic_id: str, request: Request, background_tasks: Backgr
         prompt=comic.prompt,
         title=comic.title,
         summary=comic.summary,
-        pages=comic.pages,
+        pages=comic.pages,  # No images yet, will be added asynchronously
         created_at=comic.created_at.isoformat() if comic.created_at else None,
         status="processing"
     )
 
-async def process_extended_pages(comic_id: str, new_pages: list, db: Session):
+async def process_extended_pages(comic_id: str,  start_idx: int, new_pages: list, db: Session):
     """Process image generation for extended comic pages, ensuring GCS uploads are completed before broadcasting."""
     start_time = time.time()
     logger.info(f"Starting image generation for extended comic {comic_id} with {len(new_pages)} new pages")
@@ -386,28 +405,33 @@ async def process_extended_pages(comic_id: str, new_pages: list, db: Session):
             logger.error(f"Comic {comic_id} not found during extension processing")
             return
 
-        # Generate images for new pages and return full comic object
-        updated_comic = await generate_comic_images({"pages": new_pages})
-        updated_new_pages = updated_comic["pages"]  # ✅ Extract updated new pages
+        # ✅ Step 1: Generate images for new pages. Generate images for new pages and return full comic object
+        image_urls = await generate_comic_images({"pages": new_pages})
+        
+        # ✅ Step 2: Update only `image_url` fields in JSONB
+        # not using this because of not efficient
+        # updated_new_pages = updated_comic["pages"]  # ✅ Extract updated new pages
 
-        # Preserve original pages
-        original_pages = comic.pages[:len(comic.pages) - len(new_pages)]
+        # ✅ Step 2: Update only `image_url` fields in JSONB
+        for idx, image_url in enumerate(image_urls):
+            sql = """
+            UPDATE comic 
+            SET pages = jsonb_set(pages, '{%s, image_url}', '"%s"')
+            WHERE id = :comic_id
+            """ % (start_idx + idx, image_url)
+            db.execute(text(sql), {"comic_id": comic_id})
 
-        # Update comic with combined pages
-        comic.pages = original_pages + updated_new_pages
-        comic.status = "completed"
+            # ✅ Commit updates every 3 pages
+            if idx % 3 == 0 or idx == len(image_urls) - 1:
+                commit_with_retry(db)
+                await broadcast_comic_update(comic_id, db)
 
-        # Commit changes **before** broadcasting
-        db.add(comic)
+        # ✅ Step 3: Final update to set status to "completed"
+        db.execute(text("UPDATE comic SET status = 'completed' WHERE id = :comic_id"),
+                   {"comic_id": comic_id})
         commit_with_retry(db)
 
-        # Refresh database object to get latest data before broadcasting
-        db.refresh(comic)
-
-        # Now broadcast updated comic
         await broadcast_comic_update(comic_id, db)
-
-        # Send webhook notification
         send_webhook(comic_id)
 
         total_time = time.time() - start_time
@@ -415,16 +439,11 @@ async def process_extended_pages(comic_id: str, new_pages: list, db: Session):
 
     except Exception as e:
         logger.error(f"Error in comic extension process: {e}", exc_info=True)
-
-        # Update comic status to failed
         try:
-            comic = db.get(Comic, comic_id)
-            if comic:
-                comic.status = "failed"
-                db.add(comic)
-                commit_with_retry(db)
-                
-                await broadcast_comic_update(comic_id, db)
+            db.execute(text("UPDATE comic SET status = 'failed' WHERE id = :comic_id"),
+                       {"comic_id": comic_id})
+            commit_with_retry(db)
+            await broadcast_comic_update(comic_id, db)
         except Exception as db_error:
             logger.error(f"Failed to update comic status after extension error: {db_error}")
 
@@ -489,6 +508,55 @@ def send_webhook(comic_id: str):
         logger.info(f"Webhook sent successfully to {webhook_url}")
     except requests.exceptions.RequestException as e:
         logger.error(f"Error sending webhook: {e}")
+
+@app.put("/comic/{comic_id}/reload-page/{page_index}", response_model=ComicResponse)
+async def reload_comic_page(comic_id: str, page_index: int, db: Session = Depends(get_db)):
+    """Re-generates the image for a specific page in the comic."""
+    logger.info(f"Reloading image for comic {comic_id}, page {page_index}")
+
+    comic = db.get(Comic, comic_id)
+    
+    if not comic:
+        raise HTTPException(status_code=404, detail="Comic not found")
+
+    # Validate page index
+    if page_index < 0 or page_index >= len(comic.pages):
+        raise HTTPException(status_code=400, detail="Invalid page index")
+
+    page = comic.pages[page_index]
+
+    # ✅ Ensure the page has an image prompt to regenerate
+    if "image_prompt" not in page or not page["image_prompt"]:
+        raise HTTPException(status_code=400, detail="Page does not have an image prompt")
+
+    # ✅ Regenerate only the failed/missing image
+    image_url = await generate_and_upload_async(page["image_prompt"])
+
+    # ✅ Update only the `image_url` field in the JSONB column
+    sql = """
+    UPDATE comic 
+    SET pages = jsonb_set(pages, '{%s, image_url}', '"%s"')
+    WHERE id = :comic_id
+    """ % (page_index, image_url)
+
+    db.execute(text(sql), {"comic_id": comic_id})
+    commit_with_retry(db)
+
+    # ✅ Broadcast the update
+    await broadcast_comic_update(comic_id, db)
+
+    logger.info(f"Reloaded image for comic {comic_id}, page {page_index}")
+    
+    return ComicResponse(
+        id=comic.id,
+        prompt=comic.prompt,
+        title=comic.title,
+        summary=comic.summary,
+        pages=comic.pages,  # ✅ Updated with new image
+        created_at=comic.created_at.isoformat() if comic.created_at else None,
+        status="completed"
+    )
+
 
 @app.get("/image-queue-size")
 async def get_image_queue_size():
