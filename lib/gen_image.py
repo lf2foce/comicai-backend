@@ -102,14 +102,14 @@ async def generate_image_flux_free_async(prompt: str) -> str:
 
 # 3
 def generate_image_gemini(prompt):
-    """Generates an image using the Gemini API with simple retry logic."""
+    """Generates an image using the Gemini API with retry logic."""
     max_retries = 3
     retry_delay = 2  # Start with 2 seconds
     
     for attempt in range(max_retries):
         try:
             print(f"Generating image with Gemini... (attempt {attempt+1}/{max_retries})")
-            
+
             response = client_gemini.models.generate_images(
                 model='imagen-3.0-fast-generate-001',
                 prompt=prompt,
@@ -126,14 +126,13 @@ def generate_image_gemini(prompt):
                 
         except Exception as e:
             logging.warning(f"Attempt {attempt+1} failed: {e}")
-        
-        # If we get here, we need to retry after a delay
+
+        # Exponential backoff
         if attempt < max_retries - 1:
             wait_time = retry_delay * (2 ** attempt)
             print(f"Retrying in {wait_time} seconds...")
             time.sleep(wait_time)
-    
-    # If we've exhausted all retries
+
     logging.error("Failed to generate image after all retry attempts")
     return None
 
@@ -184,9 +183,9 @@ async def upload_image_gg_storage_async(image_bytes, bucket_name, prefix):
 #             return None
 
 async def generate_image_gemini_async(prompt):
-    """Generate an image using Gemini API asynchronously while respecting rate limits."""
-    async with semaphore:  # Ensure one-at-a-time execution
-        await asyncio.sleep(rate_limit_delay)  # Enforce delay between requests
+    """Generate an image using Gemini API asynchronously while enforcing rate limits."""
+    async with semaphore:  # Ensure requests are sequential
+        await asyncio.sleep(rate_limit_delay)  # Enforce a delay before making a new request
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: generate_image_gemini(prompt))
     

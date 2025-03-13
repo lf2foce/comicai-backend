@@ -7,7 +7,7 @@ import requests
 from sqlalchemy import desc, text
 from typing import List, Dict, Any
 
-from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import select, Session
 from dotenv import load_dotenv
@@ -237,24 +237,33 @@ async def process_comic_generation(request: ComicRequest, db: Session, comic_id:
         loop = asyncio.get_running_loop()
         comic_list = await loop.run_in_executor(None, lambda: gemini_text_generation(request))
         
-        # Update the comic with text content but no images yet
-        visibility = "private" if request.user_id else "community"
+        # # Update the comic with text content but no images yet
+        # visibility = "private" if request.user_id else "community"
         
         comic = db.get(Comic, comic_id)
-        if comic:
-            comic.title = comic_list["title"]
-            comic.summary = comic_list["summary"]
-            comic.pages = comic_list["pages"]  # Pages with prompts but no images yet
-            comic.status = "processing"
-            db.add(comic)
-            commit_with_retry(db)
-            logger.info(f"Updated comic {comic_id} with text content")
-            
-            # Broadcast update with text but no images yet
-            await broadcast_comic_update(comic_id, db)
-        else:
+        # ✅ Step 1.1: Store text in the database
+        comic = db.get(Comic, comic_id)
+        if not comic:
             logger.error(f"Comic {comic_id} not found in database")
             return
+
+        comic.title = comic_list["title"]
+        comic.summary = comic_list["summary"]
+        comic.pages = comic_list["pages"]  # ✅ Ensure text is stored before moving to images
+        comic.status = "processing"
+        db.add(comic)
+        commit_with_retry(db)  # ✅ Ensure Step 1 commits fully
+
+        logger.info(f"✅ Text generation completed for {comic_id}, proceeding to image generation")
+
+        # ✅ Broadcast update with text content before generating images
+        await broadcast_comic_update(comic_id, db)
+
+        # ✅ Step 2: Generate images **only if pages exist**
+        if not comic.pages or len(comic.pages) == 0:
+            logger.error(f"❌ No pages found for {comic_id}, skipping image generation")
+            return
+        
         
         text_time = time.time()
         logger.info(f"Text generation completed in {text_time - start_time:.2f} seconds")
@@ -465,12 +474,49 @@ def get_comic(comic_id: str, db: Session = Depends(get_db)):
         status=comic.status
     )
     
-@app.get("/comics", response_model=list[ComicResponse])
-async def get_all_comics(db: Session = Depends(get_db)):
+@app.get("/comics", response_model=List[ComicResponse])
+async def get_user_comics(
+    request: Request,  # ✅ Use Request to manually extract headers
+    db: Session = Depends(get_db),
+):
+    """Fetch comics only for the authenticated user."""
+    try:
+        user_id = request.headers.get("X-User-Id")  # ✅ Extract from headers manually
+
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Unauthorized: Missing user ID")
+
+        # Query only comics that belong to the user
+        comics = (
+            db.query(Comic)
+            .filter(Comic.user_id == user_id)
+            .order_by(desc(Comic.created_at))
+            .limit(100)
+            .all()
+        )
+
+        return [
+            ComicResponse(
+                id=comic.id,
+                prompt=comic.prompt,
+                title=comic.title,
+                summary=comic.summary,
+                pages=comic.pages,
+                created_at=comic.created_at.isoformat() if comic.created_at else None,
+                status=comic.status,
+            )
+            for comic in comics
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching comics: {e}", exc_info=True)
+        return []
+
+@app.get("/comics-public", response_model=list[ComicResponse])
+async def get_all_comics_public(db: Session = Depends(get_db)):
     """Fetch all comics from the database."""
     try:
         # Use a more efficient query
-        query = db.query(Comic).order_by(desc(Comic.created_at)).limit(10) #.filter(Comic.visibility == "community")
+        query = db.query(Comic).filter(Comic.visibility == "community").order_by(desc(Comic.created_at)).limit(30)
         comics = query.all()
         
         return [
@@ -489,7 +535,7 @@ async def get_all_comics(db: Session = Depends(get_db)):
         logger.error(f"Error fetching comics: {e}", exc_info=True)
         # Return empty list instead of failing
         return []
-
+    
 def send_webhook(comic_id: str):
     """Sends a webhook to Next.js based on the environment."""
     environment = os.getenv("ENVIRONMENT", "dev")

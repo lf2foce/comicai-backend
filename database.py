@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from sqlmodel import SQLModel, Session, create_engine
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.pool import NullPool  # Prevents closing connections on each commit
+
 import time
 import logging
 
@@ -16,10 +18,11 @@ if DATABASE_URL is None:
 
 # ✅ Create Database Engine
 engine = create_engine(DATABASE_URL, echo=False,
-    pool_size=10,         # ✅ Max connections in the pool
-    max_overflow=20,      # ✅ Allow extra connections beyond pool_size
-    pool_recycle=300,     # ✅ Refresh connections every 5 minutes
-    pool_pre_ping=True,   # ✅ Check if the connection is still alive before using)  # ✅ echo=True for debugging
+    # pool_size=10,         # ✅ Max connections in the pool
+    # max_overflow=20,      # ✅ Allow extra connections beyond pool_size
+    # pool_recycle=300,     # ✅ Refresh connections every 5 minutes
+    # pool_pre_ping=True,   # ✅ Check if the connection is still alive before using)  # ✅ echo=True for debugging
+    poolclass=NullPool
 )
 # ✅ Function to Initialize DB
 def init_db():
