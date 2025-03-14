@@ -5,7 +5,7 @@ import time
 import asyncio
 import requests
 from sqlalchemy import desc, text
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -349,14 +349,23 @@ async def generate_comic(request: ComicRequest, background_tasks: BackgroundTask
         created_at=new_comic.created_at.isoformat() if new_comic.created_at else str(time.time()),
         status='processing'
     )
+from pydantic import BaseModel
 
+class ExtendComicRequest(BaseModel):
+    prompt: Optional[str]  # ✅ Defines 'prompt' as a required field
 # Update the extend_comic function to use WebSockets too
-@app.post("/comic/{comic_id}/extend", response_model=ComicResponse)
-async def extend_comic(comic_id: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+@app.put("/comic/{comic_id}/extend", response_model=ComicResponse)
+async def extend_comic(comic_id: str, 
+                       request_body: ExtendComicRequest,
+                    #    request: Request, 
+                    #    background_tasks: BackgroundTasks, 
+                       db: Session = Depends(get_db)):
     """Extends a comic by generating new pages and images asynchronously."""
     
-    data = await request.json()
-    prompt = data.get("prompt")
+    # data = await request.json()
+    # prompt = data.get("prompt")
+
+    prompt = request_body.prompt
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Missing prompt in request")
