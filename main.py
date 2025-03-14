@@ -351,7 +351,7 @@ async def generate_comic(request: ComicRequest, background_tasks: BackgroundTask
     )
 
 # Update the extend_comic function to use WebSockets too
-@app.put("/comic/{comic_id}/extend", response_model=ComicResponse)
+@app.post("/comic/{comic_id}/extend", response_model=ComicResponse)
 async def extend_comic(comic_id: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Extends a comic by generating new pages and images asynchronously."""
     
