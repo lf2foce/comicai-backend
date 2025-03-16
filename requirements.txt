@@ -1,9 +1,10 @@
 fastapi[standard]
+SQLAlchemy==2.0.39
 groq 
 instructor 
 python-dotenv
 together
-sqlmodel
+sqlmodel==0.0.24
 psycopg2
 openai
 google-genai
